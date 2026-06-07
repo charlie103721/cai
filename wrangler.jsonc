@@ -23,7 +23,7 @@
     {
       "binding": "DB",
       "database_name": "cai-db",
-      "database_id": "<your-d1-database-id>",
+      "database_id": "798518e0-d059-4c4e-86df-34deb4de111b",
       "migrations_dir": "server/db/migrations"
     }
   ]
