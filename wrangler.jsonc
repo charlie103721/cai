@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cai",
+  "compatibility_date": "2026-02-12",
+  "main": "./server/index.tsx",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": {
+    "enabled": true
+  },
+  "placement": {
+    "mode": "smart"
+  },
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cai-db",
+      "database_id": "<your-d1-database-id>",
+      "migrations_dir": "server/db/migrations"
+    }
+  ]
+}

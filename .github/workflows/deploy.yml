@@ -1,0 +1,124 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # daily cleanup check
+
+concurrency:
+  group: deploy-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      # Generate migration if schema changed
+      - name: Generate migration
+        if: github.ref == 'refs/heads/main'
+        run: |
+          bun run db:generate
+          if git diff --quiet server/db/migrations/; then
+            echo "No new migration"
+          else
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add server/db/migrations/
+            git commit -m "chore: auto-generate migration for schema change"
+            git push
+          fi
+
+      - run: bun run build
+
+      # Production: migrate + deploy to main worker
+      - name: Migrate production DB
+        if: github.ref == 'refs/heads/main'
+        run: bun run db:migrate:prod
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Deploy production
+        if: github.ref == 'refs/heads/main'
+        run: bunx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Preview: deploy branch as separate worker (no DB migration)
+      - name: Deploy preview
+        if: github.ref != 'refs/heads/main'
+        run: |
+          APP_NAME=$(node -p "require('./package.json').name")
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-20)
+          PREVIEW_NAME="${APP_NAME}-preview-${SAFE_BRANCH}"
+          bunx wrangler deploy --name "$PREVIEW_NAME"
+          # Propagate auth secret so preview can sign/verify JWTs
+          echo "$BETTER_AUTH_SECRET" | bunx wrangler secret put BETTER_AUTH_SECRET --name "$PREVIEW_NAME"
+          SUBDOMAIN=$(bunx wrangler whoami 2>/dev/null | grep -oP '[\w-]+\.workers\.dev' || echo 'workers.dev')
+          PREVIEW_URL="https://${PREVIEW_NAME}.${SUBDOMAIN}"
+          echo "### Preview deployed" >> $GITHUB_STEP_SUMMARY
+          echo "$PREVIEW_URL" >> $GITHUB_STEP_SUMMARY
+          # Post preview URL as PR comment
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr comment "$PR_NUMBER" --body "🚀 Preview deployed: $PREVIEW_URL" --edit-last 2>/dev/null \
+              || gh pr comment "$PR_NUMBER" --body "🚀 Preview deployed: $PREVIEW_URL"
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+  # Cleanup preview workers for PRs closed more than 3 days ago
+  cleanup:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Delete stale preview workers
+        run: |
+          APP_NAME=$(node -p "require('./package.json').name")
+
+          # Get PRs closed in the last 10 days
+          CLOSED_PRS=$(gh pr list --state closed --json headRefName,closedAt --limit 50 --repo ${{ github.repository }} --search "closed:>=$(date -u -d '10 days ago' +%Y-%m-%d)")
+
+          echo "$CLOSED_PRS" | bun -e "
+            const prs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const appName = '${APP_NAME}';
+            for (const pr of prs) {
+              const closedAge = now - new Date(pr.closedAt).getTime();
+              if (closedAge > THREE_DAYS) {
+                const safeBranch = pr.headRefName.replace(/\//g, '-').toLowerCase().slice(0, 20);
+                const name = appName + '-preview-' + safeBranch;
+                console.log('Deleting ' + name + ' (closed ' + Math.floor(closedAge / 86400000) + 'd ago)');
+                try {
+                  require('child_process').execSync('bunx wrangler delete --name ' + name + ' --force', { stdio: 'inherit' });
+                } catch { /* worker may not exist */ }
+              }
+            }
+          "
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
