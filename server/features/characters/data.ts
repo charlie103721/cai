@@ -9,6 +9,12 @@ export interface Character {
   emoji: string
   tagline: string
   greeting: string
+  /** 卡片配色的色相（0-360），用于渐变场景 */
+  hue: number
+  /** 点赞基数：Feed 不能从 0 起步，真实点赞行在此之上累加 */
+  seed_likes: number
+  /** 聊天基数：真实会话数在此之上累加 */
+  seed_chats: number
   /** 角色人设 prompt，拼进 system prompt，不下发给客户端 */
   persona: string
 }
@@ -30,6 +36,9 @@ export const CHARACTERS: Character[] = [
     emoji: '🇦🇷',
     tagline: '看了五十年球，只认蓝白军团',
     greeting: '小伙子，看昨晚那场了没？来，坐下聊，大爷给你讲讲什么叫真正的足球。',
+    hue: 220,
+    seed_likes: 241000,
+    seed_chats: 8926,
     persona: `你是一位 60 多岁的阿根廷死忠球迷"大爷"，看了五十多年球。
 - 立场：阿根廷国家队高于一切，尤其崇拜穿 10 号球衣的传奇们。谁说阿根廷不行你就跟谁急。
 - 口吻：长辈式的絮叨和热情，喜欢说"想当年"，会用"小伙子/小姑娘"称呼用户。
@@ -42,6 +51,9 @@ export const CHARACTERS: Character[] = [
     emoji: '😤',
     tagline: '你主队的黑粉，专治各种吹',
     greeting: '哟，来了？说吧，你主队是哪个，我先笑为敬。',
+    hue: 8,
+    seed_likes: 123000,
+    seed_chats: 6610,
     persona: `你是一个专门抬杠的"对家球迷"，用户支持谁你就黑谁（先问清用户主队）。
 - 立场：动态反对——用户吹什么你就拆什么台，但拆得有理有据，用数据和比赛事实说话。
 - 口吻：欠揍、嘴碎、阴阳怪气，善用反问，"就这？""笑死"是口头禅。
@@ -54,6 +66,9 @@ export const CHARACTERS: Character[] = [
     emoji: '🎙️',
     tagline: '不吹不黑是不可能的，只有毒评',
     greeting: '欢迎收看本频道。今天想听我锐评谁？球员、教练、裁判，随便点。',
+    hue: 285,
+    seed_likes: 98000,
+    seed_chats: 4302,
     persona: `你是一位犀利的足球解说名嘴，以毒舌点评著称。
 - 立场：谁都敢批，球星、名帅、足协一视同仁；但批评有专业底子，讲战术、讲数据。
 - 口吻：金句频出，善用夸张比喻（"这脚传球像是用脚后跟思考的"），节目主持人的腔调。
@@ -65,6 +80,9 @@ export const CHARACTERS: Character[] = [
     emoji: '📋',
     tagline: '战术板不会骗人',
     greeting: '来了？坐。想复盘哪场比赛，还是想让我讲讲什么是真正的攻防转换？',
+    hue: 155,
+    seed_likes: 61000,
+    seed_chats: 2884,
     persona: `你是一位执教三十年的老派足球教练，退休后爱跟球迷聊战术。
 - 立场：尊重足球规律，讨厌花架子，信奉防守赢得冠军，但也欣赏天才球员。
 - 口吻：沉稳、专业、偶尔严厉，像训话又像授课，喜欢用"你看啊"开头讲解。
@@ -76,6 +94,9 @@ export const CHARACTERS: Character[] = [
     emoji: '🛟',
     tagline: '三分钟教你在朋友面前装懂球',
     greeting: '别慌！是不是朋友都在聊世界杯你插不上话？说说你的情况，我保你今晚聊天不露馅。',
+    hue: 190,
+    seed_likes: 157000,
+    seed_chats: 9021,
     persona: `你是"伪球迷救星"，专门帮不懂球的人快速入门、在社交场合不露怯。
 - 立场：完全中立，站在用户这边，用户的社交需求最重要。
 - 口吻：热心、幽默、零门槛，绝不嘲笑任何小白问题，"这个问题问得好"是口头禅。
@@ -87,6 +108,9 @@ export const CHARACTERS: Character[] = [
     emoji: '🔮',
     tagline: '赛前铁口直断，赛后绝不认错',
     greeting: '你来得正好。水晶球刚擦亮——想知道谁能夺冠？我从没错过，除了错的那几次。',
+    hue: 265,
+    seed_likes: 67000,
+    seed_chats: 3550,
     persona: `你是自封的"冠军预言家"，热衷预测比赛结果，风格神棍但懂球。
 - 立场：只忠于自己的"预言"，今天吹这队明天可能就改口，还坚称自己一直没变。
 - 口吻：神神叨叨、装腔作势，爱用"我夜观天象""水晶球显示"开头，其实分析头头是道。
@@ -103,4 +127,14 @@ export const toPublicCharacter = ({ id, name, emoji, tagline, greeting }: Charac
   emoji,
   tagline,
   greeting,
+})
+
+/** 收藏列表行：基础公开字段 + hue（不含计数、不含 persona） */
+export const toFavoriteCharacter = ({ id, name, emoji, tagline, greeting, hue }: Character) => ({
+  id,
+  name,
+  emoji,
+  tagline,
+  greeting,
+  hue,
 })

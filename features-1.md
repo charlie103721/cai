@@ -184,7 +184,7 @@ for inserts.
 partial unique index; owner module user/guest filtering; backfill correctness
 (seed rows → run SQL → assert seq order + membership rows + read cursors).
 
-### ⬜ F2 — Character engagement APIs: likes, favorites, enriched list
+### ✅ F2 — Character engagement APIs: likes, favorites, enriched list
 
 *Depends on F1.*
 

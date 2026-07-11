@@ -1,11 +1,26 @@
 import { fetchApi } from './api'
 
-export interface PublicCharacter {
+/** 聊天/会话里附带的基础角色卡（不含计数）。 */
+export interface BasicCharacter {
   id: string
   name: string
   emoji: string
   tagline: string
   greeting: string
+}
+
+/** Feed 富集角色：基础卡 + 配色 + 计数/归属（GET /api/characters）。 */
+export interface PublicCharacter extends BasicCharacter {
+  hue: number
+  like_count: number
+  liked: boolean
+  chat_count: number
+  favorited: boolean
+}
+
+/** 收藏列表行：基础卡 + hue（GET /api/favorites）。 */
+export interface FavoriteCharacter extends BasicCharacter {
+  hue: number
 }
 
 export interface Conversation {
@@ -41,14 +56,17 @@ export const getCharacters = () =>
 export const getTodayTopics = () =>
   fetchApi<Envelope<DailyTopic[]>>('/api/topics/today').then((r) => r.data)
 
+export const getFavorites = () =>
+  fetchApi<Envelope<FavoriteCharacter[]>>('/api/favorites').then((r) => r.data)
+
 export const getConversations = () =>
-  fetchApi<Envelope<(Conversation & { character: PublicCharacter | null })[]>>(
+  fetchApi<Envelope<(Conversation & { character: BasicCharacter | null })[]>>(
     '/api/chat/conversations',
   ).then((r) => r.data)
 
 export const createConversation = (characterId: string) =>
   fetchApi<
-    Envelope<{ conversation: Conversation; messages: ChatMessage[]; character: PublicCharacter }>
+    Envelope<{ conversation: Conversation; messages: ChatMessage[]; character: BasicCharacter }>
   >('/api/chat/conversations', {
     method: 'POST',
     body: JSON.stringify({ characterId }),
@@ -59,7 +77,7 @@ export const getConversation = (id: string) =>
     Envelope<{
       conversation: Conversation
       messages: ChatMessage[]
-      character: PublicCharacter | null
+      character: BasicCharacter | null
     }>
   >(`/api/chat/conversations/${id}`).then((r) => r.data)
 
