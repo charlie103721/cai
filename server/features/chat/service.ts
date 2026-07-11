@@ -1,5 +1,5 @@
-import type Anthropic from '@anthropic-ai/sdk'
 import type { DB } from '../../db'
+import { openChatCompletionStream, type LlmConfig } from '../../lib/llm'
 import { SHARED_GUARDRAILS, type Character } from '../characters/data'
 import { findActiveTopicsByDate, todayKey } from '../topics/repo'
 import {
@@ -41,20 +41,18 @@ export async function buildSystemPrompt(db: DB, character: Character) {
 }
 
 /**
- * 发消息主流程：存用户消息 → 组上下文 → 流式请求 Claude。
- * 返回 SDK 的 MessageStream 和一个收尾函数（存助手回复 + 刷新会话）。
+ * 发消息主流程：存用户消息 → 组上下文 → 流式请求 LLM（OpenRouter）。
+ * 返回文本增量迭代器和一个收尾函数（存助手回复 + 刷新会话）。
  */
 export async function streamReply(params: {
   db: DB
-  anthropic: Anthropic
-  model: string
+  llm: LlmConfig
   character: Character
   conversationId: string
   userContent: string
   isFirstUserMessage: boolean
 }) {
-  const { db, anthropic, model, character, conversationId, userContent, isFirstUserMessage } =
-    params
+  const { db, llm, character, conversationId, userContent, isFirstUserMessage } = params
 
   await insertMessage(db, {
     conversation_id: conversationId,
@@ -66,10 +64,10 @@ export async function streamReply(params: {
   const context = history.slice(-CONTEXT_MESSAGE_LIMIT)
   const system = await buildSystemPrompt(db, character)
 
-  const stream = anthropic.messages.stream({
-    model,
-    max_tokens: MAX_REPLY_TOKENS,
+  const stream = await openChatCompletionStream({
+    config: llm,
     system,
+    maxTokens: MAX_REPLY_TOKENS,
     messages: context.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,

@@ -23,7 +23,6 @@
 		"secrets:github": "bun scripts/push-github-secrets.ts"
 	},
 	"dependencies": {
-		"@anthropic-ai/sdk": "^0.111.0",
 		"@tailwindcss/vite": "4.1.18",
 		"@tanstack/react-query": "5.90.21",
 		"better-auth": "1.4.18",

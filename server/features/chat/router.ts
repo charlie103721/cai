@@ -4,7 +4,7 @@ import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { ok, fail } from '../../util/response'
 import { createRateLimiter } from '../../lib/rateLimit'
-import { getAnthropicClient, getChatModel } from '../../lib/anthropic'
+import { getLlmConfig } from '../../lib/llm'
 import logger from '../../util/logger'
 import { getCharacter, toPublicCharacter } from '../characters/data'
 import { findConversations, findConversation, findMessages, deleteConversation, type Owner } from './repo'
@@ -100,8 +100,7 @@ chatRoutes.post('/conversations/:id/messages', async (c) => {
   try {
     reply = await streamReply({
       db,
-      anthropic: getAnthropicClient(c),
-      model: getChatModel(c),
+      llm: getLlmConfig(c),
       character,
       conversationId: conversation.id,
       userContent: parsed.data.content,
@@ -117,11 +116,9 @@ chatRoutes.post('/conversations/:id/messages', async (c) => {
   return streamSSE(c, async (sse) => {
     let accumulated = ''
     try {
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          accumulated += event.delta.text
-          await sse.writeSSE({ event: 'delta', data: JSON.stringify({ text: event.delta.text }) })
-        }
+      for await (const text of stream) {
+        accumulated += text
+        await sse.writeSSE({ event: 'delta', data: JSON.stringify({ text }) })
       }
       await finalize(accumulated)
       await sse.writeSSE({ event: 'done', data: JSON.stringify({ conversationId: conversation.id }) })
