@@ -35,3 +35,5 @@ local.db
 .env
 .env.prod
 .claude/
+.env.bak
+.env.*.bak
