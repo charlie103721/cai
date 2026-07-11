@@ -484,6 +484,28 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
   cost control. If limits must become strict later: Durable Objects or the CF
   Rate Limiting binding, out of scope here.
 
+## 5.2 Known risks & practical caveats (eyes-open list)
+
+1. **Local dev must move to workerd for the WS/DO work.** Today `bun run local`
+   runs the Hono server in plain Bun (`server/dev.ts`) — Durable Objects,
+   Queues, and WS hibernation **do not exist there**. The chat-transport phase
+   switches local dev to `wrangler dev` (workerd emulates DO/D1/Queues/R2
+   locally; the repo's `preview` script already does this). Vite keeps serving
+   the client; its proxy needs `ws: true` for `/api/ws`. Non-DO endpoints can
+   keep the fast Bun loop during earlier phases.
+2. **Plan requirements.** Cloudflare **Queues requires Workers Paid**; Durable
+   Objects are available on Free (SQLite-backed) but with tighter limits.
+   Confirm the account is on Paid before the media phase; the WS phase itself
+   runs on Free-tier DOs if needed.
+3. **Multi-bubble output depends on model formatting.** The `---` split is
+   best-effort by design — worst case the character sends one bubble (graceful,
+   not broken). Don't spend P0 time chasing split fidelity.
+4. **Schedule.** P0 target (World Cup final, 2026-07-19) is tight for the full
+   WS layer. The design de-risks this deliberately: the REST fallback endpoint
+   is the same service code, so chat ships working request/response first and
+   the DO/WS layer activates on top without client-visible API changes —
+   if the date wins, WS slips a few days, not the launch.
+
 ## 6. Cross-cutting rules
 
 - Every new owner-scoped query uses the existing `Owner = {userId} | {guestId}`
