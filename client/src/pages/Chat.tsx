@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Send } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Textarea } from '@/components/ui/textarea'
-import { AppShell } from '@/components/AppShell'
+import { toast } from 'sonner'
+import { Verified } from '@/components/Verified'
 import {
   getConversation,
   sendChatMessage,
+  favoriteCharacter,
+  unfavoriteCharacter,
   ChatRequestError,
   type ChatMessage,
+  type PublicCharacter,
 } from '@/lib/chat'
 
 interface DisplayMessage {
@@ -19,160 +19,199 @@ interface DisplayMessage {
   content: string
 }
 
+/**
+ * Chat surface — full-screen overlay on mobile (covers the tab bar), fills the
+ * content area beside the sidebar on desktop. The immersive rebuild (live over
+ * the socket, typing dots, etc.) lands in F8; F7 keeps the REST send working
+ * inside the new dark shell.
+ */
 export default function Chat() {
-  const { id = '' } = useParams()
+  const { conversationId = '' } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<{ code: string; text: string } | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const detail = useQuery({
-    queryKey: ['conversation', id],
-    queryFn: () => getConversation(id),
-    enabled: !!id,
+    queryKey: ['conversation', conversationId],
+    queryFn: () => getConversation(conversationId),
+    enabled: !!conversationId,
   })
 
-  // 服务端历史加载后初始化本地消息列表（之后以本地状态为准做流式追加）
+  const character = detail.data?.character
+
+  // hue / favorited come from the enriched roster cache when available
+  const meta = useMemo(() => {
+    const roster = queryClient.getQueryData<PublicCharacter[]>(['characters'])
+    return roster?.find((c) => c.id === detail.data?.conversation.character_id)
+  }, [queryClient, detail.data])
+  const hue = meta?.hue ?? 42
+  const [favorited, setFavorited] = useState(false)
+  useEffect(() => setFavorited(meta?.favorited ?? false), [meta])
+
   useEffect(() => {
     if (detail.data) {
       setMessages(
-        detail.data.messages.map((m: ChatMessage) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-        })),
+        detail.data.messages.map((m: ChatMessage) => ({ id: m.id, role: m.role, content: m.content })),
       )
     }
   }, [detail.data])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
   }, [messages, sending])
 
-  const character = detail.data?.character
+  const toggleFav = async () => {
+    if (!meta) return
+    const prev = favorited
+    setFavorited(!prev)
+    try {
+      const res = prev ? await unfavoriteCharacter(meta.id) : await favoriteCharacter(meta.id)
+      setFavorited(res.favorited)
+    } catch {
+      setFavorited(prev)
+      toast.error('Could not update follow — please try again.')
+    }
+  }
 
   const send = async () => {
     const content = input.trim()
     if (!content || sending) return
-
     setError(null)
     setSending(true)
     setInput('')
 
-    // 乐观插入用户气泡，用 clientMsgId 关联；助手回复由 promise 落定后一次性追加
     const clientMsgId = crypto.randomUUID()
     const tempUserId = `user-${clientMsgId}`
     setMessages((prev) => [...prev, { id: tempUserId, role: 'user', content }])
 
     try {
-      const { userMessage, messages: replies } = await sendChatMessage(id, content, clientMsgId)
+      const { userMessage, messages: replies } = await sendChatMessage(conversationId, content, clientMsgId)
       setMessages((prev) => {
         const withUser = prev.map((m) =>
           m.id === tempUserId ? { id: userMessage.id, role: userMessage.role, content: userMessage.content } : m,
         )
-        return [
-          ...withUser,
-          ...replies.map((r) => ({ id: r.id, role: r.role, content: r.content })),
-        ]
+        return [...withUser, ...replies.map((r) => ({ id: r.id, role: r.role, content: r.content }))]
       })
-      // 首条消息会生成会话标题，刷新侧边栏
       void queryClient.invalidateQueries({ queryKey: ['conversations'] })
     } catch (err) {
-      // 请求被拒 — 移除乐观的用户气泡，保留输入待重试
       setMessages((prev) => prev.filter((m) => m.id !== tempUserId))
+      setInput(content)
       if (err instanceof ChatRequestError && err.code === 'GUEST_LIMIT_REACHED') {
-        setError({ code: err.code, text: '免费聊天次数用完啦，注册后可以继续畅聊' })
-        setInput(content)
+        setError({ code: err.code, text: 'You’ve used up the free chats — sign up to keep going.' })
       } else if (err instanceof ChatRequestError && err.code === 'RATE_LIMITED') {
-        setError({ code: err.code, text: '发太快了，休息一下再聊' })
-        setInput(content)
+        setError({ code: err.code, text: 'Slow down a moment, then try again.' })
       } else {
-        setError({ code: 'REQUEST_FAILED', text: '消息发送失败，请重试' })
-        setInput(content)
+        setError({ code: 'REQUEST_FAILED', text: 'Message failed to send — please retry.' })
       }
     } finally {
       setSending(false)
     }
   }
 
+  const scene = `radial-gradient(120% 60% at 50% 12%, hsl(${hue} 44% 22%) 0%, hsl(${hue} 36% 10%) 46%, #0a0a0c 100%)`
+
   return (
-    <AppShell>
-      <header className="flex items-center gap-2 border-b p-3 md:px-6">
-        <Button variant="ghost" size="sm" className="md:hidden" asChild>
-          <Link to="/" aria-label="返回首页">
-            <ArrowLeft className="size-4" />
-          </Link>
-        </Button>
-        <span className="text-2xl">{character?.emoji ?? '💬'}</span>
-        <div className="min-w-0">
-          <h1 className="truncate font-semibold">{character?.name ?? '聊天'}</h1>
-          {character && (
-            <p className="truncate text-xs text-muted-foreground">{character.tagline}</p>
-          )}
+    <div
+      className="fixed inset-0 z-40 flex flex-col lg:static lg:z-auto lg:h-full"
+      style={{ background: scene }}
+    >
+      <div className="h-[30px] shrink-0 lg:hidden" />
+      <header className="flex flex-none items-center gap-2.5 border-b border-white/10 px-3.5 pb-3 pt-1.5 lg:px-6 lg:py-4">
+        <button onClick={() => navigate(-1)} aria-label="Back" className="flex">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 19-7-7 7-7" />
+            <path d="M19 12H5" />
+          </svg>
+        </button>
+        <div className="flex size-[38px] items-center justify-center rounded-full border-2 border-white/50 bg-white/15 text-xl">
+          {character?.emoji ?? '💬'}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-[15px] font-bold">{character?.name ?? 'Chat'}</span>
+            <Verified s={12} />
+          </div>
+          <div className="text-[11px]" style={{ color: '#7dd0a0' }}>● Online</div>
+        </div>
+        {meta && (
+          <button
+            onClick={() => void toggleFav()}
+            aria-label="Favorite"
+            className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/15 text-lg leading-none"
+            style={{ color: favorited ? 'var(--brand)' : '#fff' }}
+          >
+            {favorited ? '★' : '☆'}
+          </button>
+        )}
       </header>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3 p-4 md:p-6">
-          {detail.isLoading && (
-            <p className="text-center text-sm text-muted-foreground">加载中…</p>
-          )}
+      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-3.5 lg:px-6">
+        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-3.5">
+          {detail.isLoading && <p className="text-center text-sm text-white/50">Loading…</p>}
           {detail.isError && (
-            <Alert variant="destructive">
-              <AlertDescription>会话不存在或已被删除</AlertDescription>
-            </Alert>
+            <p className="text-center text-sm text-white/50">This conversation could not be found.</p>
           )}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex items-end gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
-            >
-              {m.role === 'assistant' && (
-                <span className="shrink-0 text-xl leading-none">{character?.emoji ?? '💬'}</span>
-              )}
-              <div
-                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm md:max-w-[70%] ${
-                  m.role === 'user'
-                    ? 'rounded-br-sm bg-primary text-primary-foreground'
-                    : 'rounded-bl-sm bg-muted'
-                }`}
-              >
-                {m.content}
+          {messages.map((m) => {
+            const u = m.role === 'user'
+            return (
+              <div key={m.id} className={`flex items-end gap-2 ${u ? 'flex-row-reverse' : ''}`} style={{ animation: 'rise .3s ease both' }}>
+                {!u && <span className="shrink-0 text-[22px] leading-none">{character?.emoji ?? '💬'}</span>}
+                <div
+                  className="max-w-[76%] whitespace-pre-wrap px-3.5 py-2.5 text-sm leading-normal"
+                  style={{
+                    borderRadius: 18,
+                    backdropFilter: 'blur(6px)',
+                    background: u ? 'var(--brand)' : 'rgba(255,255,255,.14)',
+                    color: u ? 'var(--brand-foreground)' : '#fff',
+                    borderBottomRightRadius: u ? 5 : 18,
+                    borderBottomLeftRadius: u ? 18 : 5,
+                    boxShadow: '0 2px 12px rgba(0,0,0,.2)',
+                  }}
+                >
+                  {m.content}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           {sending && (
-            <div className="flex items-end gap-2">
-              <span className="shrink-0 text-xl leading-none">{character?.emoji ?? '💬'}</span>
-              <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm">
-                <span className="animate-pulse">正在输入…</span>
+            <div className="flex items-end gap-2" style={{ animation: 'rise .3s ease both' }}>
+              <span className="text-[22px] leading-none">{character?.emoji ?? '💬'}</span>
+              <div style={{ padding: '12px 15px', borderRadius: 18, borderBottomLeftRadius: 5, background: 'rgba(255,255,255,.14)' }}>
+                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', height: 16 }}>
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: '9999px', background: '#fff', animation: 'blink 1.2s infinite', animationDelay: i * 0.18 + 's' }} />
+                  ))}
+                </span>
               </div>
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
       </div>
 
       {error && (
-        <div className="mx-auto w-full max-w-3xl px-4 pb-2">
-          <Alert variant="destructive">
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span>{error.text}</span>
-              {error.code === 'GUEST_LIMIT_REACHED' && (
-                <Button size="sm" asChild>
-                  <Link to="/signup">免费注册</Link>
-                </Button>
-              )}
-            </AlertDescription>
-          </Alert>
+        <div className="mx-auto w-full max-w-[640px] px-4 pb-2">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-sm">
+            <span>{error.text}</span>
+            {error.code === 'GUEST_LIMIT_REACHED' && (
+              <button
+                onClick={() => navigate('/signup')}
+                className="rounded-full px-3 py-1 text-[13px] font-semibold"
+                style={{ background: 'var(--brand)', color: 'var(--brand-foreground)' }}
+              >
+                Sign up
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      <footer className="border-t p-3">
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          <Textarea
+      <footer className="flex flex-none items-center gap-2 px-3.5 pb-4 pt-2.5 lg:px-6">
+        <div className="mx-auto flex w-full max-w-[660px] items-center gap-2">
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -181,15 +220,24 @@ export default function Chat() {
                 void send()
               }
             }}
-            placeholder={`跟${character?.name ?? 'TA'}聊点什么…`}
             rows={1}
-            className="max-h-32 min-h-10 flex-1 resize-none focus-visible:ring-0"
+            placeholder={`Message ${character?.name ?? ''}…`}
+            className="h-11 max-h-28 flex-1 resize-none rounded-full border border-white/15 bg-white/10 px-4.5 py-3 text-sm leading-tight text-white outline-none focus-visible:ring-0"
           />
-          <Button onClick={() => void send()} disabled={sending || !input.trim()} size="icon">
-            <Send className="size-4" />
-          </Button>
+          <button
+            onClick={() => void send()}
+            disabled={!input.trim() || sending}
+            aria-label="Send"
+            className="flex size-11 flex-none items-center justify-center rounded-full transition-opacity"
+            style={{ background: 'var(--brand)', color: 'var(--brand-foreground)', opacity: input.trim() && !sending ? 1 : 0.45 }}
+          >
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="m22 2-7 20-4-9-9-4Z" />
+              <path d="M22 2 11 13" />
+            </svg>
+          </button>
         </div>
       </footer>
-    </AppShell>
+    </div>
   )
 }

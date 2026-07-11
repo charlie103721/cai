@@ -99,6 +99,25 @@ export const getFavorites = () =>
 export const getConversations = () =>
   fetchApi<Envelope<ConversationListItem[]>>('/api/chat/conversations').then((r) => r.data)
 
+/** 点赞切换 → { liked, like_count }。 */
+export const likeCharacter = (id: string) =>
+  fetchApi<Envelope<{ liked: boolean; like_count: number }>>(
+    `/api/characters/${id}/like`,
+    { method: 'POST' },
+  ).then((r) => r.data)
+
+/** 关注（幂等）→ { favorited: true }。 */
+export const favoriteCharacter = (id: string) =>
+  fetchApi<Envelope<{ favorited: boolean }>>(`/api/favorites/${id}`, {
+    method: 'POST',
+  }).then((r) => r.data)
+
+/** 取消关注（幂等）→ { favorited: false }。 */
+export const unfavoriteCharacter = (id: string) =>
+  fetchApi<Envelope<{ favorited: boolean }>>(`/api/favorites/${id}`, {
+    method: 'DELETE',
+  }).then((r) => r.data)
+
 export const createConversation = (characterId: string, topicId?: string) =>
   fetchApi<
     Envelope<{
