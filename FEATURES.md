@@ -1,95 +1,89 @@
-# Claude.ai Clone - Features List
+# 世界杯球迷 AI 聊天 - 功能清单
 
-## Core Chat Features
-- [ ] **Chat Interface** – Real-time chat with Claude API
-- [ ] **Message Streaming** – Stream Claude's responses in real-time
-- [ ] **Message History** – Display conversation thread with user and assistant messages
-- [ ] **New Chat** – Start fresh conversations
-- [ ] **Edit Messages** – Re-run or modify previous messages
-- [ ] **Conversation Renaming** – Auto or manual conversation titles
-- [ ] **Conversation Search** – Full-text search across conversations
+> 产品定位：类 Character.AI 的角色聊天产品，主题聚焦体育/足球，
+> 以 2026 世界杯为切入点，让球迷进来跟"有立场、有性格"的 AI 角色聊球。
+>
+> 核心目标：让球迷愿意进来聊天，聊完还想回来。
 
-## Conversation Management
-- [ ] **Conversation Sidebar** – List of all conversations
-- [ ] **Delete Conversations** – Remove old chats
-- [ ] **Archive Conversations** – Hide without deleting
-- [ ] **Pin/Favorite Conversations** – Quick access to important chats
-- [ ] **Conversation Metadata** – Last updated time, message count, etc.
+---
 
-## File & Media Support
-- [ ] **File Upload** – Attach documents (PDF, images, text, etc.)
-- [ ] **Image Upload** – Send and analyze images
-- [ ] **File Preview** – Show uploaded files in conversation
-- [ ] **Multiple File Support** – Upload multiple files per message
+## 阶段规划
 
-## Model & Configuration
-- [ ] **Model Selection** – Choose between Claude versions (Opus, Sonnet, Haiku)
-- [ ] **System Prompts** – Custom system instructions
-- [ ] **Temperature Control** – Adjust response randomness
-- [ ] **Max Tokens** – Control response length
-- [ ] **Saved Presets** – Save prompt configurations
+- **P0 冲刺版**：赶在世界杯决赛（2026-07-19）前后上线，接住赛事热度
+- **P1 留存版**：赛后 2-4 周内迭代，把流量沉淀为回访用户
+- **P2 扩展版**：世界杯热度过后，扩展到联赛/其他运动的长线运营
 
-## Artifacts
-- [ ] **Code Artifacts** – Render code blocks separately
-- [ ] **Code Syntax Highlighting** – Language-specific formatting
-- [ ] **Copy Code** – Quick copy-to-clipboard
-- [ ] **Code Execution** (optional) – Run code in sandbox
-- [ ] **Text Artifacts** – Long-form text rendering
-- [ ] **Preview Pane** – Side-by-side artifact preview
+---
 
-## Projects & Organization
-- [ ] **Projects** – Group related conversations
-- [ ] **Project Creation** – Create and name projects
-- [ ] **Project Sidebar** – Navigate between projects
-- [ ] **Move Conversations to Projects** – Organize existing chats
-- [ ] **Project Deletion** – Remove projects
-- [ ] **Shared Projects** (optional) – Collaborate with others
+## P0 冲刺版（最小可上线）
 
-## User & Account
-- [ ] **User Authentication** – Sign up/login
-- [ ] **User Profile** – Profile settings and preferences
-- [ ] **Logout** – Secure logout
-- [ ] **Password Reset** – Recover account access
-- [ ] **Account Deletion** – Delete user data
+### 角色系统（产品核心）
+- [ ] **官方角色库** – 首发 10-15 个精心策划的角色，覆盖不同球迷心理需求
+- [ ] **角色卡** – 头像、名字、一句话简介、开场白、性格设定（persona prompt）
+- [ ] **人设一致性** – 角色全程保持立场和口吻，不出戏
+- [ ] **角色主动开场** – 进入聊天不是空白输入框，角色先搭话（如"看昨晚那场了吗？"）
 
-## UI/UX
-- [ ] **Responsive Design** – Desktop, tablet, mobile support
-- [ ] **Dark/Light Mode** – Theme toggle
-- [ ] **Sidebar Toggle** – Show/hide navigation
-- [ ] **Loading States** – Visual feedback while processing
-- [ ] **Error Handling** – User-friendly error messages
-- [ ] **Keyboard Shortcuts** – Quick actions (e.g., Cmd+K for new chat)
+首发角色方向（用原型/虚构人设，规避真人姓名肖像风险）：
+- 各强队死忠球迷（阿根廷大爷、巴西桑巴老哥、英格兰 "It's coming home" 信徒、法国冷静帝…）
+- 嘴臭对家 – 专门跟你打嘴仗的死对头球迷
+- 毒舌名嘴 – 犀利点评比赛和球员
+- 老派战术教练 – 复盘比赛、讲战术
+- 伪球迷救星 – 教你三分钟看懂比赛、在朋友面前装懂
+- 冠军预言家 – 跟你赌谁夺冠、被打脸也嘴硬
 
-## API & Backend
-- [ ] **Claude API Integration** – Connect to Anthropic API
-- [ ] **Authentication Middleware** – Secure API calls
-- [ ] **Rate Limiting** – Prevent abuse
-- [ ] **Error Handling** – Graceful error responses
-- [ ] **Conversation Persistence** – Save to database
-- [ ] **Cost Tracking** (optional) – Monitor API usage
+### 聊天核心
+- [ ] **实时流式回复** – 打字机效果，响应快
+- [ ] **对话历史** – 同一角色的聊天记录持久保存
+- [ ] **多会话** – 同一角色可开新对话，历史互不干扰
+- [ ] **游客模式** – 不注册先聊几句，聊出兴趣再引导注册
 
-## Database
-- [ ] **User Table** – Store user accounts
-- [ ] **Conversation Table** – Store chats and metadata
-- [ ] **Message Table** – Store individual messages
-- [ ] **Project Table** – Store project collections
-- [ ] **File Storage** – Store uploaded files/attachments
+### 热点话题（运营驱动，暂不接实时数据）
+- [ ] **每日话题注入** – 运营手动更新当天赛况要点，注入所有角色的上下文
+- [ ] **话题入口** – 首页展示今日热门话题（"决赛前瞻""昨晚争议判罚"），点击直接带话题进入对话
 
-## Advanced Features (Nice-to-Have)
-- [ ] **Conversation Sharing** – Share chats via public link
-- [ ] **Conversation Branching** – Create alternate response paths
-- [ ] **Markdown Support** – Render formatted text
-- [ ] **LaTeX Math** – Render mathematical equations
-- [ ] **Voice Input** (optional) – Speech-to-text
-- [ ] **Export Conversations** – Download chats as PDF/MD
-- [ ] **Usage Analytics** – View conversation statistics
-- [ ] **Team/Workspace Management** – Multiple user support
+### 传播
+- [ ] **对话分享卡片** – 精彩对话一键生成截图/卡片，方便发到社交媒体和球迷群
 
-## Security & Performance
-- [ ] **HTTPS Only** – Secure connections
-- [ ] **JWT Authentication** – Secure token-based auth
-- [ ] **Input Validation** – Sanitize user inputs
-- [ ] **CORS** – Proper cross-origin handling
-- [ ] **API Key Security** – Secure Claude API key storage
-- [ ] **Caching** – Cache responses where appropriate
-- [ ] **CDN** – Serve static assets fast
+### 基础设施
+- [ ] **Claude API 接入** – 角色对话引擎
+- [ ] **速率限制** – 游客和注册用户分级限额，控制成本
+- [ ] **移动端优先的响应式 UI** – 球迷大多用手机
+- [ ] **数据表** – 用户、角色、会话、消息
+
+---
+
+## P1 留存版（把流量变成回访）
+
+### 用户身份
+- [ ] **注册/登录** – 游客转正式用户，保留聊天记录
+- [ ] **选择主队** – 用户标记自己支持的球队，影响角色推荐和话术
+- [ ] **长期记忆** – 角色记住用户是哪队球迷、聊过什么、立过什么 flag
+  （回访体验的关键："上次你说他不行，现在被打脸了吧？"）
+
+### 召回
+- [ ] **赛后召回** – 关键比赛结束后推送/邮件："你的死对头有话跟你说"
+- [ ] **每日签到话题** – 每天一个新话题，给用户回来的理由
+
+### 角色深化
+- [ ] **角色广场** – 按球队/类型浏览和搜索角色
+- [ ] **角色热度榜** – 展示最火的角色和金句
+
+---
+
+## P2 扩展版（长线）
+
+- [ ] **实时比赛数据接入** – 赛程、比分、事件（体育数据 API），角色自动知道最新战况
+- [ ] **用户自建角色（UGC）** – 开放角色创建和分享，需配套内容审核
+- [ ] **群聊模式** – 多个角色同场吵球（主队粉 vs 对家 vs 中立名嘴）
+- [ ] **扩展赛事** – 五大联赛、NBA、电竞等，摆脱单一赛事依赖
+- [ ] **多语言** – 中/英起步，按用户分布扩展
+- [ ] **语音** – 角色语音回复（TTS），强化人设
+
+---
+
+## 风险与注意事项
+
+- **真人肖像/姓名权** – 角色一律用原型化虚构人设（"阿根廷传奇 10 号风格的老球迷"而非真名）
+- **知识时效性** – 模型不知道最新赛果，P0 靠运营注入话题上下文兜底，P2 靠数据 API 解决
+- **内容安全** – 嘴仗角色的"攻击性"要有边界（垃圾话可以，人身攻击/歧视不行），system prompt 里明确约束
+- **成本控制** – 游客限额 + 短上下文窗口 + 便宜模型打底（如 Haiku），热门角色可用更强模型
