@@ -13,6 +13,12 @@ export async function findActiveTopicsByDate(db: DB, topicDate: string) {
     .orderBy(desc(daily_topics.created_at))
 }
 
+/** 按 id 查话题（不筛 is_active）；调用方自行判断是否可用。 */
+export async function findTopicById(db: DB, id: string) {
+  const [row] = await db.select().from(daily_topics).where(eq(daily_topics.id, id))
+  return row ?? null
+}
+
 export async function insertTopic(
   db: DB,
   data: { topic_date: string; title: string; content: string },

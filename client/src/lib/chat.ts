@@ -27,6 +27,9 @@ export interface Conversation {
   id: string
   character_id: string
   title: string | null
+  type: string
+  topic_id: string | null
+  last_read_seq: number
   created_at: string
   updated_at: string
 }
@@ -36,7 +39,28 @@ export interface ChatMessage {
   conversation_id: string
   role: 'user' | 'assistant'
   content: string
+  seq: number
+  sender_character_id: string | null
+  kind: string
+  status: string
+  media_url: string | null
+  client_msg_id: string | null
   created_at: string
+}
+
+/** 收件箱行的最后一条消息摘要。 */
+export interface LastMessage {
+  role: string
+  content: string
+  kind: string
+  created_at: string | null
+}
+
+/** 收件箱行：会话 + 角色卡 + 最后一条消息 + 未读数。 */
+export interface ConversationListItem extends Conversation {
+  character: BasicCharacter | null
+  last_message: LastMessage | null
+  unread_count: number
 }
 
 export interface DailyTopic {
@@ -60,16 +84,24 @@ export const getFavorites = () =>
   fetchApi<Envelope<FavoriteCharacter[]>>('/api/favorites').then((r) => r.data)
 
 export const getConversations = () =>
-  fetchApi<Envelope<(Conversation & { character: BasicCharacter | null })[]>>(
-    '/api/chat/conversations',
-  ).then((r) => r.data)
+  fetchApi<Envelope<ConversationListItem[]>>('/api/chat/conversations').then((r) => r.data)
 
-export const createConversation = (characterId: string) =>
+export const createConversation = (characterId: string, topicId?: string) =>
   fetchApi<
-    Envelope<{ conversation: Conversation; messages: ChatMessage[]; character: BasicCharacter }>
+    Envelope<{
+      conversation: Conversation
+      messages: ChatMessage[]
+      character: BasicCharacter
+      reused: boolean
+    }>
   >('/api/chat/conversations', {
     method: 'POST',
-    body: JSON.stringify({ characterId }),
+    body: JSON.stringify({ characterId, topicId }),
+  }).then((r) => r.data)
+
+export const markConversationRead = (id: string) =>
+  fetchApi<Envelope<{ last_read_seq: number }>>(`/api/chat/conversations/${id}/read`, {
+    method: 'POST',
   }).then((r) => r.data)
 
 export const getConversation = (id: string) =>
@@ -96,68 +128,30 @@ export class ChatRequestError extends Error {
 }
 
 /**
- * 发消息并消费 SSE 流。事件：delta {text} / done / error {message}。
+ * 发消息：一次请求，返回持久化后的用户消息 + 助手回复气泡（1..N 条）。
+ * 用原始 fetch 以便保留 error code（GUEST_LIMIT_REACHED / RATE_LIMITED / CHAT_UNAVAILABLE）。
  */
-export async function streamChatMessage(opts: {
-  conversationId: string
-  content: string
-  onDelta: (text: string) => void
-  onError: (message: string) => void
-  signal?: AbortSignal
-}): Promise<void> {
-  const res = await fetch(`/api/chat/conversations/${opts.conversationId}/messages`, {
+export async function sendChatMessage(
+  conversationId: string,
+  content: string,
+  clientMsgId?: string,
+): Promise<{ userMessage: ChatMessage; messages: ChatMessage[] }> {
+  const res = await fetch(`/api/chat/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ content: opts.content }),
-    signal: opts.signal,
+    body: JSON.stringify({ content, clientMsgId }),
   })
 
-  if (!res.ok || !res.body) {
+  if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {
       error?: { code?: string }
     } | null
     throw new ChatRequestError(body?.error?.code ?? 'REQUEST_FAILED', res.status)
   }
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let eventName = ''
-  let dataLines: string[] = []
-
-  const dispatch = () => {
-    if (dataLines.length === 0) return
-    const raw = dataLines.join('\n')
-    try {
-      const payload = JSON.parse(raw) as { text?: string; message?: string }
-      if (eventName === 'delta' && payload.text) opts.onDelta(payload.text)
-      else if (eventName === 'error') opts.onError(payload.message ?? '回复失败')
-    } catch {
-      // 忽略无法解析的心跳/空帧
-    }
+  const body = (await res.json()) as {
+    data: { userMessage: ChatMessage; messages: ChatMessage[] }
   }
-
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    let newlineIndex
-    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).replace(/\r$/, '')
-      buffer = buffer.slice(newlineIndex + 1)
-
-      if (line === '') {
-        dispatch()
-        eventName = ''
-        dataLines = []
-      } else if (line.startsWith('event:')) {
-        eventName = line.slice(6).trim()
-      } else if (line.startsWith('data:')) {
-        dataLines.push(line.slice(5).trimStart())
-      }
-    }
-  }
-  dispatch()
+  return body.data
 }

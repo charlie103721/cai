@@ -237,7 +237,7 @@ serialized. Update the `PublicCharacter` type in `client/src/lib/chat.ts`.
 **Tests**: toggle on/off/on; idempotent favorite POST/DELETE; owner isolation;
 counts include seeds; `liked`/`favorited` reflect the caller; unknown ids 404.
 
-### ⬜ F3 — Chat core rewrite: multi-bubble replies, seq, JSON transport, inbox
+### ✅ F3 — Chat core rewrite: multi-bubble replies, seq, JSON transport, inbox
 
 *Depends on F1.*
 

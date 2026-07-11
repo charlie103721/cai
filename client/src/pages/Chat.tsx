@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { AppShell } from '@/components/AppShell'
 import {
   getConversation,
-  streamChatMessage,
+  sendChatMessage,
   ChatRequestError,
   type ChatMessage,
 } from '@/lib/chat'
@@ -49,7 +49,7 @@ export default function Chat() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, sending])
 
   const character = detail.data?.character
 
@@ -61,34 +61,33 @@ export default function Chat() {
     setSending(true)
     setInput('')
 
-    const assistantId = `pending-${Date.now()}`
-    setMessages((prev) => [
-      ...prev,
-      { id: `user-${Date.now()}`, role: 'user', content },
-      { id: assistantId, role: 'assistant', content: '' },
-    ])
-
-    const appendDelta = (text: string) =>
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m)),
-      )
+    // 乐观插入用户气泡，用 clientMsgId 关联；助手回复由 promise 落定后一次性追加
+    const clientMsgId = crypto.randomUUID()
+    const tempUserId = `user-${clientMsgId}`
+    setMessages((prev) => [...prev, { id: tempUserId, role: 'user', content }])
 
     try {
-      await streamChatMessage({
-        conversationId: id,
-        content,
-        onDelta: appendDelta,
-        onError: (message) => setError({ code: 'STREAM_ERROR', text: message }),
+      const { userMessage, messages: replies } = await sendChatMessage(id, content, clientMsgId)
+      setMessages((prev) => {
+        const withUser = prev.map((m) =>
+          m.id === tempUserId ? { id: userMessage.id, role: userMessage.role, content: userMessage.content } : m,
+        )
+        return [
+          ...withUser,
+          ...replies.map((r) => ({ id: r.id, role: r.role, content: r.content })),
+        ]
       })
       // 首条消息会生成会话标题，刷新侧边栏
       void queryClient.invalidateQueries({ queryKey: ['conversations'] })
     } catch (err) {
-      // 请求没发出去/被拒 — 移除占位的助手消息
-      setMessages((prev) => prev.filter((m) => m.id !== assistantId))
+      // 请求被拒 — 移除乐观的用户气泡，保留输入待重试
+      setMessages((prev) => prev.filter((m) => m.id !== tempUserId))
       if (err instanceof ChatRequestError && err.code === 'GUEST_LIMIT_REACHED') {
         setError({ code: err.code, text: '免费聊天次数用完啦，注册后可以继续畅聊' })
+        setInput(content)
       } else if (err instanceof ChatRequestError && err.code === 'RATE_LIMITED') {
         setError({ code: err.code, text: '发太快了，休息一下再聊' })
+        setInput(content)
       } else {
         setError({ code: 'REQUEST_FAILED', text: '消息发送失败，请重试' })
         setInput(content)
@@ -140,15 +139,18 @@ export default function Chat() {
                     : 'rounded-bl-sm bg-muted'
                 }`}
               >
-                {m.content ||
-                  (sending && m.role === 'assistant' ? (
-                    <span className="animate-pulse">正在输入…</span>
-                  ) : (
-                    ''
-                  ))}
+                {m.content}
               </div>
             </div>
           ))}
+          {sending && (
+            <div className="flex items-end gap-2">
+              <span className="shrink-0 text-xl leading-none">{character?.emoji ?? '💬'}</span>
+              <div className="rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm">
+                <span className="animate-pulse">正在输入…</span>
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
       </div>
