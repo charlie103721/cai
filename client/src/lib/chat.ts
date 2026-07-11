@@ -154,6 +154,7 @@ export class ChatRequestError extends Error {
   constructor(
     public code: string,
     public status: number,
+    public retryAfterSeconds?: number,
   ) {
     super(code)
   }
@@ -179,7 +180,12 @@ export async function sendChatMessage(
     const body = (await res.json().catch(() => null)) as {
       error?: { code?: string }
     } | null
-    throw new ChatRequestError(body?.error?.code ?? 'REQUEST_FAILED', res.status)
+    const retryAfter = Number(res.headers.get('Retry-After'))
+    throw new ChatRequestError(
+      body?.error?.code ?? 'REQUEST_FAILED',
+      res.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    )
   }
 
   const body = (await res.json()) as {

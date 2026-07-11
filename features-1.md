@@ -559,7 +559,7 @@ feed). Empty state: one quiet slide pointing to the For You feed.
 error; shell tabs + route switching; reels empty state; topic chat-seeding call
 shape.
 
-### ⬜ F8 — Client: chat overlay, inbox, profile — live over the socket
+### ✅ F8 — Client: chat overlay, inbox, profile — live over the socket
 
 *Depends on F5, F6, F7.*
 
