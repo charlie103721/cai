@@ -75,6 +75,25 @@ for the React/Babel CDN). Kit notes in [`dp/qiumi-app/README.md`](./dp/qiumi-app
   worktree): `bun run typecheck` · `bun run lint` · `bun run test:run` ·
   `bun run build`, plus driving the real API/app for the changed surface.
 
+## Working notes for build agents (read once, applies to every feature)
+
+- **Worktrees don't have `.env`** (it's gitignored). Before running the dev
+  server or driving the real API in a worktree, copy it from the main checkout:
+  `cp /home/dev/cai/.env <worktree>/.env`. Never commit it. `local.db` is also
+  per-worktree — run `bun run db:migrate` in the worktree first.
+- **Live chat needs `OPENROUTER_API_KEY`** (from the copied `.env`). Tests must
+  NEVER hit the network: the chat service takes its LLM call as an injectable
+  seam (see F3) — tests pass a fake that returns canned text/throws.
+- **Admin bootstrap** (needed to create topics in F4+): sign up a user via the
+  app or `POST /api/auth/sign-up/email`, then
+  `UPDATE user SET role='admin' WHERE email='…'` directly in the DB (this is
+  the intended flow — sign-up can never set roles), then sign in again.
+- **better-auth tables use camelCase columns** (`createdAt`, `emailVerified`…)
+  — that's managed by better-auth, leave as-is. All app tables and new columns
+  are snake_case (including the new `handle`/`favorite_team` on `user`).
+- Verify commands for the gate: `bun run typecheck` · `bun run lint` ·
+  `bun run test:run` · `bun run build`.
+
 ---
 
 ## Features
@@ -116,11 +135,26 @@ nullable/defaulted, existing code keeps compiling.
   DEFAULT `'[]'`, `hue` integer NOT NULL DEFAULT 28, `pinned` integer(bool)
   NOT NULL DEFAULT false
 
-**New indexes** (create AFTER the backfill): unique
-`chat_messages(conversation_id, seq)`; partial unique
+**New indexes**: unique `chat_messages(conversation_id, seq)`; partial unique
 `chat_messages(conversation_id, client_msg_id) WHERE client_msg_id IS NOT NULL`.
 
-**Backfill** (hand-written SQL appended to the generated migration):
+**Migration mechanics — ORDER MATTERS.** On a database with existing chat rows,
+every message starts with the default `seq = 0`, so creating the unique
+`(conversation_id, seq)` index before the backfill **fails with a constraint
+violation** (any conversation with ≥2 messages has duplicate zeros). Do it in
+this exact order, all inside the ONE generated migration file:
+
+1. `bun run db:generate` (after editing `schema.ts`) → produces the SQL file +
+   snapshot. Commit both together.
+2. Hand-edit that file: **move the `CREATE UNIQUE INDEX …(conversation_id, seq)`
+   statement to the very end**, then insert the backfill SQL below (before that
+   index). Statement order in the file: ALTERs/CREATE TABLEs → other indexes →
+   backfill UPDATEs/INSERT → unique seq index last.
+3. Verify on BOTH shapes: a fresh DB (delete `local.db` → `bun run db:migrate`)
+   and a seeded one (create a conversation + several messages via the running
+   app or SQL first, then migrate) — the seeded case is what production is.
+
+**Backfill** (hand-written SQL, per step 2):
 
 ```sql
 UPDATE chat_messages SET seq = (
@@ -178,8 +212,10 @@ partial unique index; owner module user/guest filtering; backfill correctness
 **Favorites** — new feature folder `server/features/favorites/` (router + repo),
 mounted at `/api/favorites` in `server/index.tsx`:
 
-- `GET /api/favorites` (guest ok) → owner's favorited characters (public shape),
-  newest first (ids → roster via `getCharacter`, skip unknown).
+- `GET /api/favorites` (guest ok) → owner's favorited characters, newest first
+  (ids → roster via `getCharacter`, skip unknown ids). Exact row shape:
+  `{ id, name, emoji, tagline, greeting, hue }` (basic public shape + hue — no
+  counts here).
 - `POST /api/favorites/:characterId` — idempotent insert; 404 unknown id;
   → `ok(c, { favorited: true }, 201)`.
 - `DELETE /api/favorites/:characterId` — idempotent → `ok(c, { favorited: false })`.
@@ -211,6 +247,9 @@ The transport-agnostic heart. After this feature chat works fully over REST
 **`server/lib/llm.ts`**: add `completeChatCompletion(params)` — same params as the
 stream fn but `stream: false`; returns `choices[0].message.content` (throw on
 `!res.ok` or empty). Delete `openChatCompletionStream` + `parseSseTextDeltas`.
+Also split config resolution: keep `getLlmConfig(c)` as a thin wrapper over a
+new `getLlmConfigFromEnv(env)` — F6's Durable Object has no Hono Context and
+needs the env variant.
 
 **`server/features/chat/service.ts`** — replace `streamReply` with:
 
@@ -247,7 +286,13 @@ sendMessage(params: {
 
 `createConversationWithGreeting`: greeting gets `seq=1` + `sender_character_id`;
 conversation gets `last_read_seq=1` + a `conversation_characters` row; optional
-`topic` param stores `topic_id`.
+`topic` param stores `topic_id`. Title: set only when currently `null`
+(the first user message names the thread; later messages never rename it).
+
+**Testability seam**: `sendMessage` receives the LLM call as an injectable
+function (e.g. a `complete` param defaulting to `completeChatCompletion`) so
+service tests pass a fake returning canned bubbles or throwing — tests never
+touch the network.
 
 **Router** (`chat/router.ts`):
 
@@ -404,7 +449,10 @@ app mount (`wss` same-origin `/api/ws`); TS frame types; auto-reconnect with
 exponential backoff (1s→30s cap); `onReconnect` invalidates TanStack Query
 caches (conversation list + open conversation) — the reconcile fetch;
 `sendMessage()` falls back to the F3 REST endpoint when the socket isn't OPEN;
-simple event-emitter API (`on('message' | 'ack' | 'typing' | …)`).
+simple event-emitter API (`on('message' | 'ack' | 'typing' | …)`). Expose it to
+React as a singleton via a small provider + `useWs()` hook (module-level
+instance; provider mounts/unmounts the connection with the app) — F8 consumes
+this hook, no component owns the socket.
 
 **Tests**: frame Zod schemas (unit); ConnectionHub protocol (ack→typing→message
 order, idempotent resend, rate-limit error frame) via
@@ -447,8 +495,10 @@ tokens and no `--font-sans`**. Add (values are canon, from the design project;
 }
 ```
 
-Expose to Tailwind v4 via `@theme` (`--color-brand: var(--brand)` etc.) so
-`bg-brand`/`text-brand-foreground` utilities work. Also add the design's
+Expose to Tailwind v4 via `@theme inline` (`--color-brand: var(--brand)` etc. —
+`inline` is required because the values are var() references) so
+`bg-brand`/`text-brand-foreground` utilities work; follow how the existing
+shadcn tokens in `index.css` are mapped. Also add the design's
 keyframes (`float`, `pop`, `rise`, `blink`, `glow` — copy from the design file)
 and a shared `fmt` count formatter (`≥10000 → x.xw`, `≥1000 → x.xk`) in
 `client/src/lib/format.ts`.
