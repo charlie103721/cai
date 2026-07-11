@@ -346,7 +346,7 @@ N, read resets); cross-owner 404s; topic 404; prompt contains topic section.
 - Tests: create roundtrip; unknown character rejected; sort order; malformed
   JSON degrades to `[]`.
 
-### ⬜ F5 — Profile, stats, guest→account merge
+### ✅ F5 — Profile, stats, guest→account merge
 
 *Depends on F1, F2.*
 
