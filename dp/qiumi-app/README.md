@@ -22,8 +22,17 @@ All data is mocked from the real persona roster and daily-topic examples. No log
 
 ---
 
-*Source: claude.ai/design project `ebfc85b0-bb48-4eed-92e0-edca6dabbdf3`,
-file `FanMouth Mobile.html` (supersedes the earlier `ui_kits/qiumi-app/index.html` —
-same design with a TikTok-style solid-icon action rail and a redesigned Profile:
-hero banner, overlapping avatar, horizontal favorites scroller, settings menu).
-Vendored into this repo as the design reference for [feature-1.md](../../feature-1.md).*
+*Source: claude.ai/design project `ebfc85b0-bb48-4eed-92e0-edca6dabbdf3`.
+Two layouts, one app:*
+
+- *`FanMouth Mobile.html`* — phone layout: full-bleed swipe feed, bottom tab bar,
+  chat as full-screen overlay. (Supersedes the earlier `ui_kits/qiumi-app/index.html`
+  revision — TikTok-style solid-icon action rail + redesigned Profile: hero
+  banner, overlapping avatar, horizontal favorites scroller, settings menu.)
+- *`FanMouth Desktop.html`* — TikTok-web layout: 240px sidebar (logo, nav,
+  Recent chats), centered 440×660 card feed with the rail beside the card, chat
+  as a right panel with max-640px centered messages, centered inbox/profile
+  columns, Edit-profile modal.
+
+*Vendored as the design references for the [features-1.md](../../features-1.md)
+roadmap ([feature-1.md](../../feature-1.md) holds the design rationale).*
