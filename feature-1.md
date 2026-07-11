@@ -347,6 +347,12 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 - **Streaming: SSE over HTTP** (`streamSSE`), not WebSockets — one-directional
   reply streaming needs no Durable Objects. Unread badges are pull-based
   (query refetch), consistent with this.
+- **Long generations (product assumption: first output may take >3 minutes once
+  image/video replies land)**: text keeps synchronous SSE, but anything with
+  minutes-long first-byte runs as an **async job** (accept → 202 + pending
+  message row → generate in background → client discovers completion by
+  polling/refetch). Holding one HTTP stream open for 3+ silent minutes is not
+  viable on mobile. Design in §8.10.
 - **Rate limiting is per-isolate** (in-memory `Map`, documented in
   `server/lib/rateLimit.ts`). Accepted for P0: limits are approximate across
   isolates/regions. The new like/favorite endpoints inherit the same caveat —
@@ -535,7 +541,40 @@ first authenticated request that still carries a guest cookie.
 - `GET /me/stats`: one `db.batch()` of three owner-scoped `COUNT(*)`s
   (conversations, favorites, likes). Works for guests via the same `Owner` filter.
 
-### 8.9 Tests (vitest, existing `server` project, better-sqlite3)
+### 8.9 Long-running generations — async message pipeline (§5.1 assumption)
+
+Why not SSE-with-heartbeats for a 3-minute generation: the Worker *can* satisfy
+proxy TTFB by emitting heartbeat frames immediately, but the client side can't be
+trusted for minutes — phones lock, apps background, radios drop, and the fetch
+stream dies with them. The reply must not depend on the request that asked for it.
+
+**Split by latency class, not by endpoint:**
+
+- **Text replies (P0)**: unchanged — synchronous SSE, ~1s to first token.
+- **Media replies (image/video, when they land)**: async job —
+  1. `POST .../messages` inserts the user message **and** an assistant message row
+     with `status='pending'`, `kind='image'|'video'`, then returns `202` with both
+     rows immediately. Nothing blocks.
+  2. Generation runs in a **Cloudflare Queue consumer** (producer binding in
+     `wrangler.jsonc`; consumers get ~15 min wall-clock and built-in retries —
+     `waitUntil` is not reliable at these durations). A Queues→Workflows upgrade
+     is mechanical if steps/multi-stage pipelines appear later.
+  3. Output lands in **R2**; the consumer updates the message row to
+     `status='ready'`, `media_url=<r2 key>` (or `status='failed'` + fallback text
+     after retries are exhausted).
+  4. Client discovery is **pull-based, reusing the unread machinery**: the chat
+     screen polls `GET /conversations/:id` on a gentle interval while a pending
+     message exists (backoff: 3s → 10s → 30s), and the inbox's `unread_count`
+     already surfaces completions that arrive while the user is elsewhere —
+     a ready media message is just a new unread assistant message. Web Push is
+     the P1 upgrade, piggybacking on the planned 赛后召回 channel.
+
+Schema impact (folded into this feature's migration so media needs no second
+migration later): `chat_messages` gains `kind text NOT NULL DEFAULT 'text'`,
+`status text NOT NULL DEFAULT 'complete'`, `media_url text`. The SSE text path
+sets nothing new (defaults apply); repo queries are unaffected.
+
+### 8.10 Tests (vitest, existing `server` project, better-sqlite3)
 
 - Repo level: partial-unique enforcement (double like by same guest = 1 row),
   toggle semantics, unread_count math (greeting excluded; count resets on read),
