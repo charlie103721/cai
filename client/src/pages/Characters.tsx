@@ -17,7 +17,7 @@ export default function Characters() {
   const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations })
 
   const startChat = useMutation({
-    mutationFn: createConversation,
+    mutationFn: (characterId: string) => createConversation(characterId),
     onSuccess: ({ conversation }) => {
       void queryClient.invalidateQueries({ queryKey: ['conversations'] })
       navigate(`/chat/${conversation.id}`)

@@ -14,12 +14,27 @@ export interface LlmConfig {
   model: string
 }
 
-export function getLlmConfig(c: Context<HonoEnv>): LlmConfig {
-  const apiKey = isDev ? process.env.OPENROUTER_API_KEY : c.env.OPENROUTER_API_KEY
+/** LLM 相关的环境变量（Hono Bindings 或 Durable Object 的 env 都满足）。 */
+export interface LlmEnv {
+  OPENROUTER_API_KEY?: string
+  OPENROUTER_MODEL?: string
+}
+
+/**
+ * 从 env 解析 LLM 配置。F6 的 Durable Object 没有 Hono Context，直接拿 env。
+ * dev 下走 process.env（本地不注入 CF bindings）。
+ */
+export function getLlmConfigFromEnv(env: LlmEnv): LlmConfig {
+  const apiKey = isDev ? process.env.OPENROUTER_API_KEY : env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured')
 
-  const model = (isDev ? process.env.OPENROUTER_MODEL : c.env.OPENROUTER_MODEL) || DEFAULT_MODEL
+  const model = (isDev ? process.env.OPENROUTER_MODEL : env.OPENROUTER_MODEL) || DEFAULT_MODEL
   return { apiKey, model }
+}
+
+/** HTTP 上下文里解析 LLM 配置，薄封装 getLlmConfigFromEnv。 */
+export function getLlmConfig(c: Context<HonoEnv>): LlmConfig {
+  return getLlmConfigFromEnv(c.env)
 }
 
 export interface ChatTurn {
@@ -28,15 +43,15 @@ export interface ChatTurn {
 }
 
 /**
- * 发起流式 chat completion，返回文本增量的异步迭代器。
- * fetch 在这里就完成，鉴权/配置错误会直接 throw，调用方好返回 503。
+ * 一次性（非流式）chat completion，返回助手回复文本。
+ * fetch 在这里完成，鉴权/配置错误或空回复会直接 throw，调用方好返回 503。
  */
-export async function openChatCompletionStream(params: {
+export async function completeChatCompletion(params: {
   config: LlmConfig
   system: string
   messages: ChatTurn[]
   maxTokens: number
-}): Promise<AsyncGenerator<string>> {
+}): Promise<string> {
   const { config, system, messages, maxTokens } = params
 
   const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
@@ -49,56 +64,23 @@ export async function openChatCompletionStream(params: {
     },
     body: JSON.stringify({
       model: config.model,
-      stream: true,
+      stream: false,
       max_tokens: maxTokens,
       messages: [{ role: 'system', content: system }, ...messages],
     }),
   })
 
-  if (!res.ok || !res.body) {
+  if (!res.ok) {
     const detail = await res.text().catch(() => '')
     throw new Error(`OpenRouter request failed: ${res.status} ${detail.slice(0, 300)}`)
   }
 
-  return parseSseTextDeltas(res.body)
-}
-
-/** 解析 OpenAI 风格 SSE：data: {choices:[{delta:{content}}]} / data: [DONE] */
-async function* parseSseTextDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      let newlineIndex
-      while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newlineIndex).replace(/\r$/, '').trim()
-        buffer = buffer.slice(newlineIndex + 1)
-
-        if (!line.startsWith('data:')) continue
-        const payload = line.slice(5).trim()
-        if (payload === '[DONE]') return
-
-        try {
-          const json = JSON.parse(payload) as {
-            choices?: { delta?: { content?: string } }[]
-            error?: { message?: string }
-          }
-          if (json.error) throw new Error(`OpenRouter stream error: ${json.error.message}`)
-          const text = json.choices?.[0]?.delta?.content
-          if (text) yield text
-        } catch (err) {
-          if (err instanceof Error && err.message.startsWith('OpenRouter stream error')) throw err
-          // 其余解析失败的行（注释/心跳）直接忽略
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
+  const json = (await res.json().catch(() => null)) as {
+    choices?: { message?: { content?: string } }[]
+  } | null
+  const content = json?.choices?.[0]?.message?.content
+  if (!content || !content.trim()) {
+    throw new Error('OpenRouter returned an empty completion')
   }
+  return content
 }
