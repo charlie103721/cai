@@ -1,22 +1,19 @@
-import { eq, and, desc, asc, isNull } from 'drizzle-orm'
+import { eq, and, desc, asc } from 'drizzle-orm'
 import type { DB } from '../../db'
 import { conversations, chat_messages } from '../../db/schema'
+import { ownerFilter as sharedOwnerFilter, ownerColumns, type Owner } from '../shared/owner'
 
-/** 会话归属：登录用户按 user_id，游客按 guest_id（两者互斥） */
-export type Owner = { userId: string } | { guestId: string }
+// 归属逻辑已抽到 shared/owner，这里保留同名类型/薄封装以兼容既有调用。
+export type { Owner }
 
-const ownerFilter = (owner: Owner) =>
-  'userId' in owner
-    ? eq(conversations.user_id, owner.userId)
-    : and(eq(conversations.guest_id, owner.guestId), isNull(conversations.user_id))
+const ownerFilter = (owner: Owner) => sharedOwnerFilter(conversations, owner)
 
 export async function insertConversation(db: DB, owner: Owner, characterId: string) {
   const [row] = await db
     .insert(conversations)
     .values({
       id: crypto.randomUUID(),
-      user_id: 'userId' in owner ? owner.userId : null,
-      guest_id: 'guestId' in owner ? owner.guestId : null,
+      ...ownerColumns(owner),
       character_id: characterId,
     })
     .returning()
