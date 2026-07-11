@@ -63,6 +63,11 @@ export const getConversation = (id: string) =>
     }>
   >(`/api/chat/conversations/${id}`).then((r) => r.data)
 
+export const deleteConversation = (id: string) =>
+  fetchApi<Envelope<{ deleted: boolean }>>(`/api/chat/conversations/${id}`, {
+    method: 'DELETE',
+  }).then((r) => r.data)
+
 export class ChatRequestError extends Error {
   constructor(
     public code: string,
