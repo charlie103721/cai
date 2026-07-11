@@ -60,6 +60,54 @@ export const account = sqliteTable(
   ],
 )
 
+// ─── app tables ──────────────────────────────────────
+
+export const conversations = sqliteTable(
+  'conversations',
+  {
+    id: text('id').primaryKey(),
+    // Exactly one of user_id / guest_id identifies the owner. Guests get a
+    // cookie-based UUID; on sign-up their conversations can be merged over.
+    user_id: text('user_id').references(() => user.id, { onDelete: 'restrict' }),
+    guest_id: text('guest_id'),
+    character_id: text('character_id').notNull(),
+    title: text('title'),
+    created_at: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index('conversations_user_id_idx').on(t.user_id),
+    index('conversations_guest_id_idx').on(t.guest_id),
+  ],
+)
+
+export const chat_messages = sqliteTable(
+  'chat_messages',
+  {
+    id: text('id').primaryKey(),
+    conversation_id: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(), // 'user' | 'assistant'
+    content: text('content').notNull(),
+    created_at: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index('chat_messages_conversation_id_idx').on(t.conversation_id)],
+)
+
+export const daily_topics = sqliteTable(
+  'daily_topics',
+  {
+    id: text('id').primaryKey(),
+    topic_date: text('topic_date').notNull(), // YYYY-MM-DD (UTC)
+    title: text('title').notNull(),
+    content: text('content').notNull(),
+    is_active: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    created_at: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index('daily_topics_topic_date_idx').on(t.topic_date)],
+)
+
 export const verification = sqliteTable(
   'verification',
   {

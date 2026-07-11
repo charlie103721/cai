@@ -9,6 +9,8 @@ interface CloudflareBindings {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   CLIENT_URL: string;
+  ANTHROPIC_API_KEY: string;
+  ANTHROPIC_MODEL?: string;
 }
 
 type HonoEnv = {

@@ -6,12 +6,16 @@ import Users from './pages/Users'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import NotFound from './pages/NotFound'
+import Characters from './pages/Characters'
+import Chat from './pages/Chat'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Characters />} />
+      <Route path="/chat/:id" element={<Chat />} />
+      <Route path="/landing" element={<Landing />} />
       <Route path="/about" element={<About />} />
       <Route path="/dashboard" element={<Home />} />
       <Route path="/login" element={<Login />} />

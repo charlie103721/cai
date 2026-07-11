@@ -2,6 +2,10 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 import { helloRoutes } from './features/hello/router'
+import { characterRoutes } from './features/characters/router'
+import { chatRoutes } from './features/chat/router'
+import { topicRoutes } from './features/topics/router'
+import { guestId } from './middleware/guestId'
 import { dbMiddleware } from './db'
 import { ok } from './util/response'
 import { requestId } from './middleware/requestId'
@@ -38,8 +42,14 @@ app.route('/api/auth', authHandler)
 // JWT middleware (non-blocking — sets user or null)
 app.use('/api/*', jwtAuth)
 
+// Guest identity (after jwtAuth — guests get an anonymous cookie ID)
+app.use('/api/*', guestId)
+
 // Feature routes
 app.route('/api/hello', helloRoutes)
+app.route('/api/characters', characterRoutes)
+app.route('/api/chat', chatRoutes)
+app.route('/api/topics', topicRoutes)
 
 app.get('/api/health', (c) => {
   return ok(c, { status: 'ok', timestamp: Date.now() })

@@ -8,6 +8,13 @@
       "when": 1776162461344,
       "tag": "0000_secret_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783771632636,
+      "tag": "0001_eminent_magik",
+      "breakpoints": true
     }
   ]
 }
