@@ -469,6 +469,14 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
   Queues → result pushed over the owner's WebSocket the moment it's ready).
   Holding any single HTTP request open for 3+ silent minutes is not viable on
   mobile. Design in §8.9.
+- **No Redis (or any external state service).** The jobs Redis usually does in
+  a WebSocket architecture are covered by platform primitives here: pub/sub
+  routing ("which server holds user X's socket?") → the `ConnectionHub` DO *is*
+  the addressable socket holder (`idFromName(ownerKey)`); hot counters (rate
+  limits, dedup) → DO storage, single-writer by construction; queues → CF
+  Queues; cache → not needed at this scale (and Workers KV/Cache API before
+  Redis if ever). Adding Redis would mean an external service + HTTP-proxied
+  access from Workers for strictly less consistency than the DO already gives.
 - **Rate limiting is per-isolate** (in-memory `Map`, documented in
   `server/lib/rateLimit.ts`). Accepted for P0: limits are approximate across
   isolates/regions. The new like/favorite endpoints inherit the same caveat —
