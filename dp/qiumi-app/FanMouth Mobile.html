@@ -1,0 +1,283 @@
+<!-- @dsCard group="FanMouth App" viewport="420x760" name="FanMouth — TikTok-style app" subtitle="Full-bleed swipe feed · immersive chat · topic reels" -->
+<!doctype html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FanMouth</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  html,body{height:100%}
+  body{margin:0;display:flex;align-items:center;justify-content:center;background:#050506;padding:16px;font-family:var(--font-sans)}
+  .device{width:390px;height:720px;background:#0c0c0d;border:1px solid #1c1c1f;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 90px rgba(0,0,0,.65);position:relative;color:#fff}
+  .stat{position:absolute;top:0;left:0;right:0;height:30px;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .feed{flex:1;overflow-y:auto;scroll-snap-type:y mandatory;min-height:0;scrollbar-width:none}
+  .feed::-webkit-scrollbar{width:0}
+  .slide{height:100%;scroll-snap-align:start;position:relative;display:flex;flex-direction:column;overflow:hidden}
+  button{font-family:var(--font-sans);color:inherit}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+  @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+  @keyframes glow{0%,100%{opacity:.45}50%{opacity:.7}}
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="appsrc">
+const { useState, useRef, useEffect } = React;
+
+/* ── data ── */
+const CHARS = [
+  { id:'arg', emoji:'🇦🇷', name:'Old-Timer Argento', tagline:'Fifty years of football — blue & white only.', greeting:'Kid, did you catch last night’s match? Sit down — let me tell you what real football looks like.', topic:'Final Preview', likes:241000, comments:'8926', hue:220 },
+  { id:'rival', emoji:'😤', name:'The Hater', tagline:'Your club’s #1 hater. Cures all hype.', greeting:'Oh, you’re here? Go on, name your club — I’ll start laughing now.', topic:'Trash Talk', likes:123000, comments:'6610', hue:8 },
+  { id:'pundit', emoji:'🎙️', name:'The Venom Pundit', tagline:'No praise, no mercy — only hot takes.', greeting:'Welcome to the show. Who am I roasting today — a player, a coach, a ref? Take your pick.', topic:'Post-Match Takes', likes:98000, comments:'4302', hue:285 },
+  { id:'coach', emoji:'📋', name:'The Old-School Coach', tagline:'The tactics board never lies.', greeting:'Have a seat. Which match do you want to break down — or shall I explain real transition play?', topic:'Tactics Recap', likes:61000, comments:'2884', hue:155 },
+  { id:'savior', emoji:'🛟', name:'The Fake-Fan Lifesaver', tagline:'Sound like a die-hard in three minutes.', greeting:'Relax! Everyone’s talking World Cup and you’re lost? Tell me the situation — I’ll keep you covered tonight.', topic:'Fan 101', likes:157000, comments:'9021', hue:190 },
+  { id:'prophet', emoji:'🔮', name:'The Champion Oracle', tagline:'Bold calls before, zero regrets after.', greeting:'Perfect timing. Crystal ball’s freshly polished — want to know who lifts the trophy? I’m never wrong, except the times I was.', topic:'Title Pick', likes:67000, comments:'3550', hue:265 },
+];
+const REPLIES = {
+  arg:['Outrageous? Back in my day THAT was a controversy. This is nothing.','You young folks don’t get the spirit of the blue and white.'],
+  rival:['That’s it? Guess that’s your club’s ceiling.','Won one game and already floating. Wait for the next round.'],
+  pundit:['That pass looked like it was decided with his heel.','Here’s my hot take for the episode. You’re welcome.'],
+  coach:['See, the problem is the midfield transition.','A formation isn’t drawn — it’s run.'],
+  savior:['Great question! Just remember: “mentality beats skill.” That’ll do.','Whatever you do, don’t say “offside is a foul” — dead giveaway.'],
+  prophet:['I’ve read the stars — this team’s got it tonight… probably.','Last miss? Mercury was in retrograde, messed with the signal.'],
+};
+const TOPICS = [
+  { pinned:true, heat:'6.7w', title:'Final Preview', big:'Who lifts the trophy?', tags:['Argentina','Title Pick'], who:['🇦🇷','😤','🔮'], hue:28, char:CHARS[0] },
+  { heat:'3.1w', title:'Last Night’s Penalty', big:'That penalty — what’s your call?', tags:['Refs','VAR'], who:['🎙️','📋'], hue:285, char:CHARS[2] },
+  { heat:'1.4w', title:'60-Second Guide', big:'What is offside?', tags:['Fan 101'], who:['🛟'], hue:190, char:CHARS[4] },
+];
+const fmt = n => n>=10000 ? (n/10000).toFixed(1).replace(/\.0$/,'')+'w' : (n>=1000?(n/1000).toFixed(1)+'k':''+n);
+const Verified = ({s=13}) => <svg viewBox="0 0 24 24" width={s} height={s} style={{flexShrink:0}}><path fill="var(--brand)" d="M12 1l2.4 2.1 3.1-.5 1.1 3 2.9 1.3-1 3.1 1 3.1-2.9 1.3-1.1 3-3.1-.5L12 23l-2.4-2.1-3.1.5-1.1-3-2.9-1.3 1-3.1-1-3.1 2.9-1.3 1.1-3 3.1.5z"/><path fill="#fff" d="M10.6 14.6l-2.2-2.2-1.2 1.2 3.4 3.4 6-6-1.2-1.2z"/></svg>;
+
+/* ── action rail ── */
+function Rail({c,onChat}){
+  const [liked,setLiked]=useState(false);
+  const [pop,setPop]=useState(0);
+  const [saved,setSaved]=useState(false);
+  const like=()=>{setLiked(v=>!v);setPop(p=>p+1);};
+  const btn={width:46,height:46,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',cursor:'pointer',padding:0,filter:'drop-shadow(0 2px 5px rgba(0,0,0,.45))'};
+  const wrap={display:'flex',flexDirection:'column',alignItems:'center',gap:3};
+  const n={fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,.6)'};
+  return <div style={{position:'absolute',right:10,bottom:150,display:'flex',flexDirection:'column',gap:16,alignItems:'center',zIndex:10}}>
+    <div style={{position:'relative',marginBottom:6,filter:'drop-shadow(0 2px 6px rgba(0,0,0,.5))'}}>
+      <div style={{width:50,height:50,borderRadius:'9999px',background:'rgba(255,255,255,.16)',border:'2px solid #fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:25}}>{c.emoji}</div>
+      <div style={{position:'absolute',bottom:-10,left:'50%',transform:'translateX(-50%)',width:22,height:22,borderRadius:'9999px',background:'var(--brand)',color:'var(--brand-foreground)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:800,border:'2px solid #0c0c0d'}}>+</div>
+    </div>
+    <div style={wrap}><button onClick={like} style={btn}><svg key={pop} viewBox="0 0 24 24" width="36" height="36" fill={liked?'var(--brand)':'#fff'} style={{animation:pop?'pop .4s ease':'none'}}><path d="M12 21.6l-1.5-1.35C5.2 15.5 2 12.6 2 9.1 2 6.4 4.1 4.3 6.8 4.3c1.5 0 3 .7 3.9 1.8l1.3 1.5 1.3-1.5c.9-1.1 2.4-1.8 3.9-1.8 2.7 0 4.8 2.1 4.8 4.8 0 3.5-3.2 6.4-8.5 11.2L12 21.6z"/></svg></button><span style={n}>{fmt(c.likes+(liked?1:0))}</span></div>
+    <div style={wrap}><button style={btn} onClick={onChat}><svg viewBox="0 0 24 24" width="35" height="35" fill="#fff"><path d="M12 3C6.9 3 2.8 6.5 2.8 10.8c0 2.4 1.3 4.6 3.4 6-.2 1-.8 2.3-1.7 3.3-.2.2 0 .6.3.5 1.9-.4 3.5-1.2 4.6-1.9.8.2 1.7.3 2.6.3 5.1 0 9.2-3.5 9.2-7.8S17.1 3 12 3z"/></svg></button><span style={n}>{c.comments}</span></div>
+    <div style={wrap}><button style={btn}><svg viewBox="0 0 24 24" width="34" height="34" fill="#fff"><path d="M21.6 11.2l-8.3-6.9c-.6-.5-1.5-.1-1.5.7v3.2C6.4 8.5 2.5 12 2.5 18.5c0 .6.8.9 1.2.4 2-2.6 4.7-3.9 8.1-4v3.2c0 .8.9 1.2 1.5.7l8.3-6.9c.5-.4.5-1.1 0-1.5z"/></svg></button><span style={n}>Share</span></div>
+  </div>;
+}
+function TopTabs({active,onChange}){
+  const t=(k,l)=><button onClick={()=>onChange&&onChange(k)} style={{background:'none',border:'none',cursor:'pointer',fontSize:15,fontWeight:active===k?700:500,color:active===k?'#fff':'rgba(255,255,255,.55)',textShadow:'0 1px 3px rgba(0,0,0,.5)',padding:'0 2px',borderBottom:active===k?'2px solid var(--brand)':'2px solid transparent',paddingBottom:3,transition:'color .2s'}}>{l}</button>;
+  return <div style={{position:'absolute',top:36,left:0,right:0,zIndex:20,display:'flex',justifyContent:'center',gap:22}}>{t('feed','For You')}{t('topics','Topics')}</div>;
+}
+function Progress({n,i}){
+  return <div style={{position:'absolute',right:5,top:'50%',transform:'translateY(-50%)',display:'flex',flexDirection:'column',gap:5,zIndex:15}}>
+    {Array.from({length:n}).map((_,k)=><span key={k} style={{width:3,height:k===i?16:7,borderRadius:2,background:k===i?'var(--brand)':'rgba(255,255,255,.3)',transition:'all .25s'}}/>)}
+  </div>;
+}
+
+/* ── persona slide ── */
+function Scene({hue,children}){
+  return <div className="slide" style={{background:'radial-gradient(125% 70% at 50% 20%, hsl('+hue+' 46% 26%) 0%, hsl('+hue+' 40% 12%) 46%, #0a0a0c 100%)'}}>
+    <div style={{position:'absolute',inset:0,background:'radial-gradient(60% 40% at 80% 88%, hsl('+hue+' 55% 30% / .35), transparent 70%)'}}/>
+    {children}
+  </div>;
+}
+function PersonaSlide({c,onChat}){
+  return <Scene hue={c.hue}>
+    <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+      <div style={{position:'absolute',width:230,height:230,borderRadius:'9999px',background:'radial-gradient(circle, hsl('+c.hue+' 70% 55% / .55), transparent 68%)',filter:'blur(30px)',animation:'glow 5s ease-in-out infinite'}}/>
+      <span style={{fontSize:140,filter:'drop-shadow(0 14px 34px rgba(0,0,0,.5))',animation:'float 6s ease-in-out infinite',position:'relative'}}>{c.emoji}</span>
+    </div>
+    <Rail c={c} onChat={onChat} />
+    <div style={{position:'absolute',left:0,right:0,bottom:0,padding:'22px 76px 24px 18px',background:'linear-gradient(transparent, rgba(0,0,0,.55) 30%, rgba(0,0,0,.82))',display:'flex',flexDirection:'column',gap:10,animation:'rise .45s ease both'}}>
+      <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:18,fontWeight:700}}>@{c.name}</span><Verified/></div>
+      <div style={{fontSize:13.5,lineHeight:1.55,color:'rgba(255,255,255,.9)'}}>{c.greeting}</div>
+      <button onClick={onChat} style={{alignSelf:'flex-start',marginTop:4,fontSize:14,fontWeight:600,color:'var(--brand-foreground)',background:'var(--brand)',border:'none',borderRadius:'9999px',padding:'11px 22px',cursor:'pointer',boxShadow:'0 8px 22px hsl(var(--brand-glow) / .4)'}}>Start chatting →</button>
+    </div>
+  </Scene>;
+}
+
+/* ── topic reel ── */
+function TopicSlide({t,onChat}){
+  return <Scene hue={t.hue}>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:'0 34px',textAlign:'center',position:'relative'}}>
+      <div style={{position:'absolute',top:'26%',width:180,height:180,borderRadius:'9999px',background:'radial-gradient(circle, hsl('+t.hue+' 80% 55% / .4), transparent 68%)',filter:'blur(26px)'}}/>
+      <span style={{fontSize:66,position:'relative',animation:'float 6s ease-in-out infinite'}}>🔥</span>
+      <div style={{fontSize:12.5,fontWeight:700,letterSpacing:'.04em',color:'var(--brand)'}}>Today’s Topic · Heat {t.heat}</div>
+      <div style={{fontSize:14,color:'rgba(255,255,255,.65)'}}>{t.title}</div>
+      <div style={{fontSize:26,fontWeight:800,lineHeight:1.3}}>{t.big}</div>
+      <div style={{display:'flex',gap:7,flexWrap:'wrap',justifyContent:'center'}}>{t.tags.map((x,i)=><span key={i} style={{fontSize:11.5,color:'rgba(255,255,255,.8)',background:'rgba(255,255,255,.1)',borderRadius:12,padding:'3px 11px'}}>#{x}</span>)}</div>
+    </div>
+    <div style={{position:'absolute',left:0,right:0,bottom:0,padding:'20px 18px 24px',background:'linear-gradient(transparent, rgba(0,0,0,.82) 55%)',display:'flex',flexDirection:'column',gap:12,animation:'rise .45s ease both'}}>
+      <div style={{fontSize:13,color:'rgba(255,255,255,.85)'}}>Pick a character and dive into this topic</div>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        {t.who.map((w,i)=><span key={i} style={{width:40,height:40,borderRadius:'9999px',background:'rgba(255,255,255,.14)',border:'2px solid rgba(255,255,255,.55)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:19}}>{w}</span>)}
+        <button onClick={()=>onChat(t.char)} style={{marginLeft:'auto',fontSize:14,fontWeight:600,color:'var(--brand-foreground)',background:'var(--brand)',border:'none',borderRadius:'9999px',padding:'11px 20px',cursor:'pointer'}}>Chat →</button>
+      </div>
+    </div>
+  </Scene>;
+}
+
+/* ── immersive chat ── */
+function Typing(){return <span style={{display:'inline-flex',gap:4,alignItems:'center',height:16}}>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:'9999px',background:'#fff',animation:'blink 1.2s infinite',animationDelay:(i*.18)+'s'}}/>)}</span>;}
+function Chat({c,onBack,isFav,onToggleFav}){
+  const [msgs,setMsgs]=useState([{role:'assistant',content:c.greeting}]);
+  const [input,setInput]=useState('');
+  const [pending,setPending]=useState(false);
+  const endRef=useRef(null);
+  useEffect(()=>{endRef.current&&endRef.current.scrollTo(0,endRef.current.scrollHeight);},[msgs,pending]);
+  const send=()=>{const t=input.trim(); if(!t||pending) return; setInput(''); setMsgs(m=>[...m,{role:'user',content:t}]); setPending(true);
+    const pool=REPLIES[c.id]; const r=pool[Math.floor(Math.random()*pool.length)];
+    setTimeout(()=>{setPending(false);setMsgs(m=>[...m,{role:'assistant',content:r}]);},1000);};
+  return <div style={{position:'absolute',inset:0,zIndex:40,display:'flex',flexDirection:'column',background:'radial-gradient(120% 60% at 50% 12%, hsl('+c.hue+' 44% 22%) 0%, hsl('+c.hue+' 36% 10%) 46%, #0a0a0c 100%)'}}>
+    <div style={{height:30}} />
+    <header style={{display:'flex',alignItems:'center',gap:10,padding:'6px 14px 12px',flex:'none',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
+      <button onClick={onBack} aria-label="Back" style={{background:'none',border:'none',cursor:'pointer',display:'flex'}}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+      <div style={{width:38,height:38,borderRadius:'9999px',background:'rgba(255,255,255,.14)',border:'2px solid rgba(255,255,255,.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{c.emoji}</div>
+      <div style={{flex:1,minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:5}}><span style={{fontWeight:700,fontSize:15}}>{c.name}</span><Verified s={12}/></div><div style={{fontSize:11,color:'#7dd0a0'}}>● Online</div></div>
+      <button onClick={onToggleFav} aria-label="Favorite" style={{fontSize:18,fontWeight:600,color:isFav?'var(--brand)':'#fff',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.16)',borderRadius:'9999px',width:36,height:36,cursor:'pointer',lineHeight:1}}>{isFav?'★':'☆'}</button>
+    </header>
+    <div ref={endRef} style={{flex:1,overflowY:'auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:14,minHeight:0}}>
+      {msgs.map((m,i)=>{const u=m.role==='user';return <div key={i} style={{display:'flex',alignItems:'flex-end',gap:8,flexDirection:u?'row-reverse':'row',animation:'rise .3s ease both'}}>
+        {!u&&<span style={{fontSize:22,flexShrink:0}}>{c.emoji}</span>}
+        <div style={{maxWidth:'76%',padding:'10px 14px',fontSize:14,lineHeight:1.5,whiteSpace:'pre-wrap',borderRadius:18,backdropFilter:'blur(6px)',background:u?'var(--brand)':'rgba(255,255,255,.14)',color:u?'var(--brand-foreground)':'#fff',borderBottomRightRadius:u?5:18,borderBottomLeftRadius:u?18:5,boxShadow:'0 2px 12px rgba(0,0,0,.2)'}}>{m.content}</div>
+      </div>;})}
+      {pending&&<div style={{display:'flex',alignItems:'flex-end',gap:8,animation:'rise .3s ease both'}}><span style={{fontSize:22}}>{c.emoji}</span><div style={{padding:'12px 15px',borderRadius:18,borderBottomLeftRadius:5,background:'rgba(255,255,255,.14)'}}><Typing/></div></div>}
+    </div>
+    <footer style={{padding:'10px 14px 16px',display:'flex',gap:8,alignItems:'center',flex:'none'}}>
+      <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} rows={1} placeholder={'Message '+c.name+'…'}
+        style={{flex:1,height:44,maxHeight:110,resize:'none',borderRadius:'9999px',border:'1px solid rgba(255,255,255,.14)',background:'rgba(255,255,255,.1)',color:'#fff',padding:'12px 18px',fontSize:14,fontFamily:'var(--font-sans)',lineHeight:1.3,outline:'none'}}/>
+      <button onClick={send} disabled={!input.trim()} style={{width:44,height:44,borderRadius:'9999px',border:'none',cursor:input.trim()?'pointer':'default',background:'var(--brand)',color:'var(--brand-foreground)',display:'flex',alignItems:'center',justifyContent:'center',opacity:input.trim()?1:.45,transition:'opacity .15s'}}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>
+    </footer>
+  </div>;
+}
+
+/* ── inbox (Chats tab) ── */
+const LAST={arg:'…what real football looks like.',rival:'Name your club, I’ll start laughing.',pundit:'Here’s my hot take for the episode.',coach:'The problem is the midfield transition.',savior:'Mentality beats skill. That’ll do.',prophet:'This team’s got it tonight… probably.'};
+const WHEN=['now','2m','18m','1h','3h','1d'];
+function Inbox({onOpen}){
+  return <div className="feed" style={{display:'block',padding:'12px 12px 20px'}}>
+    <div style={{padding:'6px 8px 12px',fontSize:20,fontWeight:800}}>Chats</div>
+    <div style={{display:'flex',flexDirection:'column'}}>
+      {CHARS.map((c,i)=><button key={c.id} onClick={()=>onOpen(c)} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 10px',border:'none',borderBottom:'1px solid rgba(255,255,255,.06)',cursor:'pointer',background:'transparent',textAlign:'left'}}>
+        <div style={{width:48,height:48,borderRadius:'9999px',background:'radial-gradient(circle at 50% 35%, hsl('+c.hue+' 42% 26%), hsl('+c.hue+' 40% 12%))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>{c.emoji}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'baseline',gap:6}}><span style={{fontSize:14.5,fontWeight:600,color:'#fff'}}>{c.name}</span><span style={{marginLeft:'auto',fontSize:11,color:'rgba(255,255,255,.4)',flexShrink:0}}>{WHEN[i]}</span></div>
+          <div style={{fontSize:12.5,color:'rgba(255,255,255,.5)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:2}}>{LAST[c.id]}</div>
+        </div>
+        {i<2&&<span style={{width:8,height:8,borderRadius:'9999px',background:'var(--brand)',flexShrink:0}}/>}
+      </button>)}
+    </div>
+  </div>;
+}
+
+/* ── profile ── */
+function Profile({favs,onOpen}){
+  const stats=[['128','Chats'],[''+favs.length,'Favorites'],['3.4w','Likes']];
+  const list=CHARS.filter(c=>favs.includes(c.id));
+  const menu=[
+    ['M12 3a6 6 0 0 0-6 6v3l-1.5 3h15L18 12V9a6 6 0 0 0-6-6zM9.5 18a2.5 2.5 0 0 0 5 0','Notifications','On'],
+    ['M12 3v18M3 12h18','Appearance','Dark'],
+    ['M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20','Language','English'],
+    ['M12 17h.01M12 13a2 2 0 1 0-2-2','Help & feedback',''],
+  ];
+  return <div className="feed" style={{display:'block',padding:'0 0 24px'}}>
+    <div style={{position:'relative',height:118,background:'radial-gradient(120% 140% at 50% 0%, hsl(42 46% 30%), hsl(28 40% 14%) 70%, #0c0c0d)'}}>
+      <button style={{position:'absolute',top:14,right:14,width:34,height:34,borderRadius:'9999px',background:'rgba(0,0,0,.28)',border:'1px solid rgba(255,255,255,.16)',color:'#fff',fontSize:15,cursor:'pointer'}}>⚙</button>
+    </div>
+    <div style={{padding:'0 20px',marginTop:-46,display:'flex',flexDirection:'column',alignItems:'center',gap:11,animation:'rise .4s ease both'}}>
+      <div style={{width:92,height:92,borderRadius:'9999px',background:'radial-gradient(circle at 50% 30%, hsl(42 46% 28%), #14110a)',border:'3px solid #0c0c0d',boxShadow:'0 0 0 2px var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:46}}>⚽</div>
+      <div style={{textAlign:'center'}}><div style={{fontSize:20,fontWeight:800}}>@footy_fan</div><div style={{fontSize:12.5,color:'rgba(255,255,255,.55)',marginTop:3}}>World Cup die-hard · Team 🇦🇷</div></div>
+      <div style={{display:'flex',width:'100%',maxWidth:300,justifyContent:'space-around',padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.08)',borderBottom:'1px solid rgba(255,255,255,.08)',margin:'2px 0'}}>
+        {stats.map(([v,l])=><div key={l} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}><span style={{fontSize:18,fontWeight:800}}>{v}</span><span style={{fontSize:11,color:'rgba(255,255,255,.5)'}}>{l}</span></div>)}
+      </div>
+      <button style={{width:'100%',maxWidth:300,fontSize:14,fontWeight:700,color:'var(--brand-foreground)',background:'var(--brand)',border:'none',borderRadius:'9999px',padding:'11px',cursor:'pointer'}}>Edit profile</button>
+    </div>
+    <div style={{padding:'0 20px'}}>
+      <div style={{margin:'24px 0 12px',fontSize:12,fontWeight:700,letterSpacing:'.05em',color:'rgba(255,255,255,.45)'}}>★ FAVORITES</div>
+      {list.length===0
+        ? <div style={{padding:'22px 12px',textAlign:'center',fontSize:13,color:'rgba(255,255,255,.4)',border:'1px dashed rgba(255,255,255,.12)',borderRadius:14}}>No favorites yet — tap ☆ in a chat to save a character here.</div>
+        : <div style={{display:'flex',gap:14,overflowX:'auto',paddingBottom:4}}>
+          {list.map(c=><button key={c.id} onClick={()=>onOpen(c)} style={{flex:'none',width:66,display:'flex',flexDirection:'column',alignItems:'center',gap:7,background:'none',border:'none',cursor:'pointer'}}>
+            <div style={{width:60,height:60,borderRadius:'9999px',background:'radial-gradient(circle at 50% 35%, hsl('+c.hue+' 42% 26%), hsl('+c.hue+' 40% 12%))',border:'2px solid var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:29}}>{c.emoji}</div>
+            <span style={{fontSize:10.5,color:'rgba(255,255,255,.75)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:66,textAlign:'center'}}>{c.name}</span>
+          </button>)}
+        </div>}
+      <div style={{margin:'24px 0 8px',fontSize:12,fontWeight:700,letterSpacing:'.05em',color:'rgba(255,255,255,.45)'}}>SETTINGS</div>
+      <div style={{borderRadius:14,border:'1px solid rgba(255,255,255,.08)',overflow:'hidden'}}>
+        {menu.map(([d,label,val],i)=><button key={label} style={{display:'flex',alignItems:'center',gap:12,width:'100%',padding:'13px 14px',border:'none',borderTop:i?'1px solid rgba(255,255,255,.06)':'none',background:'transparent',cursor:'pointer',textAlign:'left'}}>
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
+          <span style={{flex:1,fontSize:14,color:'#fff'}}>{label}</span>
+          {val&&<span style={{fontSize:12.5,color:'rgba(255,255,255,.4)'}}>{val}</span>}
+          <span style={{fontSize:16,color:'rgba(255,255,255,.3)'}}>›</span>
+        </button>)}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── bottom tab bar ── */
+function TabBar({active,onChange}){
+  const I={
+    home:<path d="M3 10.5 12 3l9 7.5M5 9v11h14V9"/>,
+    topics:<path d="M12 3s5 3.5 5 8a5 5 0 0 1-10 0c0-1.5.8-2.6.8-2.6s.7 1.4 1.7 1.4c0-2.2.9-3.8 2.5-6.2z"/>,
+    messages:<path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z"/>,
+    me:<><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></>,
+  };
+  const items=[['home','Home'],['topics','Topics'],['messages','Chats'],['me','Me']];
+  return <nav style={{height:56,flex:'none',display:'flex',alignItems:'center',justifyContent:'space-around',borderTop:'1px solid rgba(255,255,255,.08)',background:'#0c0c0d',zIndex:35}}>
+    {items.map(([k,l])=>{const on=active===k;return <button key={k} onClick={()=>onChange(k)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,background:'none',border:'none',cursor:'pointer',fontSize:10,fontWeight:on?600:400,color:on?'#fff':'rgba(255,255,255,.42)'}}>
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke={on?'var(--brand)':'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{I[k]}</svg>{l}</button>;})}
+  </nav>;
+}
+
+function App(){
+  const [tab,setTab]=useState('home');
+  const [chat,setChat]=useState(null);
+  const [idx,setIdx]=useState(0);
+  const [recents,setRecents]=useState([CHARS[0],CHARS[2],CHARS[5]]);
+  const [favs,setFavs]=useState(['arg','prophet']);
+  const toggleFav=id=>setFavs(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
+  const open=c=>{setChat(c);setRecents(r=>[c,...r.filter(x=>x.id!==c.id)].slice(0,6));};
+  const isTopics = tab==='topics';
+  const isFeed = tab==='home'||isTopics;
+  const list = isTopics?TOPICS:CHARS;
+  const onScroll = e => { const el=e.currentTarget; setIdx(Math.round(el.scrollTop/el.clientHeight)); };
+  return <div className="device">
+    <div className="stat"><span>9:41</span><span>●●●</span></div>
+    {isFeed ? <>
+      <TopTabs active={isTopics?'topics':'feed'} onChange={k=>{setTab(k==='topics'?'topics':'home');setIdx(0);}} />
+      <div className="feed" key={tab} onScroll={onScroll}>
+        {isTopics
+          ? TOPICS.map((t,i)=><TopicSlide key={i} t={t} onChat={open} />)
+          : CHARS.map(c=><PersonaSlide key={c.id} c={c} onChat={()=>open(c)} />)}
+      </div>
+    </> : tab==='me' ? <Profile favs={favs} onOpen={open} />
+      : tab==='messages' ? <Inbox onOpen={open} />
+      : <div className="feed" style={{display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,.4)',fontSize:14}}>Recent chats</div>}
+    {chat && <Chat c={chat} onBack={()=>setChat(null)} isFav={favs.includes(chat.id)} onToggleFav={()=>toggleFav(chat.id)} />}
+    <TabBar active={tab} onChange={t=>{setTab(t);setIdx(0);}} />
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+<script>
+  try {
+    const code = Babel.transform(document.getElementById('appsrc').textContent, { presets: [['react', { runtime: 'classic' }]] }).code;
+    (0, eval)(code);
+  } catch (e) {
+    document.getElementById('root').innerHTML =
+      '<pre style="color:#f88;padding:20px;white-space:pre-wrap;font:12px monospace">' + (e.stack || e) + '</pre>';
+  }
+</script>
+</body>
+</html>

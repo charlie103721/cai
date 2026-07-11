@@ -1,9 +1,14 @@
 # Feature 1 — FanMouth（球迷嘴替）TikTok-style App
 
-> Implements the design at `ui_kits/qiumi-app/index.html` in the Claude Design project
-> (claude.ai/design project `ebfc85b0-bb48-4eed-92e0-edca6dabbdf3`): a dark, full-bleed,
-> mobile-first vertical swipe feed of AI fan personas, topic reels, immersive chat,
-> a chats inbox, and a profile screen.
+> Implements the design **`FanMouth Mobile.html`** from the Claude Design project
+> `ebfc85b0-bb48-4eed-92e0-edca6dabbdf3` (supersedes the earlier
+> `ui_kits/qiumi-app/index.html` revision): a dark, full-bleed, mobile-first vertical
+> swipe feed of AI fan personas, topic reels, immersive chat, a chats inbox, and a
+> profile screen.
+>
+> **Design file (vendored copy): [`dp/qiumi-app/FanMouth Mobile.html`](./dp/qiumi-app/FanMouth%20Mobile.html)**
+> — open it in a browser for the interactive reference (needs network for the
+> React/Babel CDN). Kit notes: [`dp/qiumi-app/README.md`](./dp/qiumi-app/README.md).
 >
 > Scope: **full stack** — client UI rebuild + server/DB changes that back it.
 > Everything must work for **guests and registered users** (design removed login as a
@@ -15,11 +20,11 @@
 
 | Design element | Notes |
 | --- | --- |
-| For You feed（推荐） | Full-screen vertical scroll-snap feed, one persona per slide: radial-gradient scene keyed by per-character `hue`, giant floating emoji, right-side action rail (follow ＋ / ♥ like / 💬 comment→chat / ↗ share), bottom overlay with @name ✓, greeting hook, "Start chatting →" CTA. Right-edge progress dots. |
+| For You feed（推荐） | Full-screen vertical scroll-snap feed, one persona per slide: radial-gradient scene keyed by per-character `hue`, giant floating emoji, right-side action rail — TikTok-style **solid white filled icons** with drop shadow, no button chrome (avatar + follow ＋ / ♥ like fills brand when active / 💬 comment→chat / ↗ share), bold counts under each. Bottom overlay with @name ✓, greeting hook, "Start chatting →" CTA. Right-edge progress dots. |
 | Topics reels（话题） | Full-screen reels per daily topic: 🔥 emoji, `Today's Topic · Heat 6.7w`, short title, big headline question, #tags, participating-persona avatars, "Chat →" seeds a chat with the linked character. |
 | Immersive chat | Full-bleed overlay above the tab bar: back / avatar / name ✓ / ● Online / ★ favorite header; glass bubbles (assistant = white glass left, user = brand flame right); typing indicator; pill composer + send. |
-| Chats inbox（消息） | Conversation list rows: gradient avatar, name, relative time, last-message preview (single line, ellipsis), unread dot. |
-| Profile（我的） | Avatar, @handle, bio line with supported team (`World Cup die-hard · Team 🇦🇷`), stat row (Chats / Favorites / Likes), Edit profile + settings buttons, ★ FAVORITES list (empty state included). |
+| Chats inbox（消息） | Conversation list rows: gradient avatar, name, relative time, last-message preview (single line, ellipsis), unread count badge (design shows a dot; product wants the count). Total unread badges the Chats tab icon. |
+| Profile（我的） | Gradient **hero banner** with ⚙ button; avatar overlapping the banner with a brand ring; @handle; bio line with supported team (`World Cup die-hard · Team 🇦🇷`); stat row (Chats / Favorites / Likes) framed by hairline borders; **full-width brand "Edit profile" button**; ★ FAVORITES as a **horizontal avatar scroller** (brand-ringed circles + names, dashed empty state); **SETTINGS menu list** — Notifications (On) / Appearance (Dark) / Language (English) / Help & feedback, each with icon, value, chevron. |
 | Chrome | Status bar, top tabs `For You · Topics`, bottom tab bar `Home / Topics / Chats / Me`. Dark only, flame-orange `--brand` as the single accent. |
 
 ---
@@ -142,10 +147,11 @@ Design: tapping "Chat →" on a reel opens a chat with that topic as the frame.
 - `conversations` gains nullable `last_read_at timestamp`.
 - `GET /api/chat/conversations` rows additionally return:
   - `last_message: { role, content, created_at } | null` (subquery: latest message),
-  - `unread: boolean` — latest **assistant** message `created_at > last_read_at`
-    (or `last_read_at` null and an assistant message exists beyond the greeting…
-    simplest correct rule: `unread = last assistant message newer than last_read_at`,
-    with brand-new conversations marked read at creation).
+  - `unread_count: number` — count of **assistant** messages with
+    `created_at > last_read_at`. Brand-new conversations are marked read at
+    creation (`last_read_at = now`) so the scripted greeting doesn't count.
+  - Client derives the **total unread** (for the Chats tab badge) by summing
+    `unread_count` across rows — no extra endpoint needed.
 - `POST /api/chat/conversations/:id/read` — sets `last_read_at = now` (owner-scoped).
   Client calls it on opening a chat and on `done` of each stream.
 - Use `sql\`now()\``-equivalent SQLite expression per AGENT.md UTC rule
@@ -174,7 +180,39 @@ New routes in `server/features/users/` (router to be created; repo exists):
 Guests on the Me tab: show stats from `GET /api/me/stats` + a "sign up to claim your
 @handle" CTA. Guest-side display name/team live in `useLocalStorage` only.
 
-### 2.8 Not in scope for the server
+### 2.8 Identity & login strategy (guest-first)
+
+The design has **no login screen** (removed per product owner) and this feature keeps
+it that way: **login is never a gate, only an upgrade.**
+
+- **Everyone starts as a guest.** The existing `guest_id` httpOnly cookie (1-year
+  expiry, set by `middleware/guestId.ts`) is the identity. Chats, likes, favorites,
+  read-state, and stats all hang off it via the `Owner` pattern — full app,
+  zero friction.
+- **Auth stays available, never required.** better-auth (email/password + GitHub +
+  Google OAuth) is already built. The dedicated `/login`/`/signup` pages stop being
+  entry points; sign-up surfaces contextually as a sheet/dialog at moments where an
+  account has obvious value:
+  1. guest hits the message rate limit (`GUEST_LIMIT_REACHED` 429 — already a
+     distinct error code for exactly this) → "Sign up to keep chatting",
+  2. Me tab → "Claim your @handle" (handle/team edits are account-only, §2.7),
+  3. optionally after N chats: "Don't lose your conversations — they live on this
+     device only."
+- **Guest → account merge (new, required).** On sign-up/sign-in with a `guest_id`
+  cookie present, re-parent the guest's data to the user:
+  `UPDATE conversations/character_likes/character_favorites
+   SET user_id = :userId, guest_id = NULL WHERE guest_id = :guestId`
+  — likes/favorites need conflict handling on the unique `(user_id, character_id)`
+  index (delete the guest row if the account already has one). Implemented as a
+  better-auth after-hook (or called from the session-created path in
+  `server/lib/auth.ts`), then the guest cookie is cleared. The schema comment
+  already promises this ("on sign-up their conversations can be merged over") but
+  **no merge code exists today** — this feature adds it.
+- **Trade-off accepted for P0**: guest identity is per-device/per-browser; clearing
+  cookies loses it. That's the standard TikTok/character-app pattern — the merge +
+  contextual prompts are the recovery path, not a login wall.
+
+### 2.9 Not in scope for the server
 
 - Comments as a distinct entity — the rail's 💬 count is chat/conversation count and
   the button just opens chat, matching the design's behavior.
@@ -195,7 +233,9 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 ### 3.1 Shell & navigation
 
 - `MobileShell` — full-viewport column (100dvh), status-bar spacer, content region,
-  `TabBar` (Home / Topics / Chats / Me — icons per design). On ≥md screens center a
+  `TabBar` (Home / Topics / Chats / Me — icons per design). The Chats tab icon
+  shows a brand-colored badge with the total `unread_count` (99+ cap), fed by the
+  conversations query (TanStack Query, refetch on window focus). On ≥md screens center a
   phone-width column on near-black backdrop (parity with the kit's framing;
   the repo already has a responsive AppShell commit to build on).
 - Routes: `/` (For You feed), `/topics` (reels), `/chats` (inbox), `/me` (profile).
@@ -210,10 +250,12 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
   scroll index.
 - `PersonaSlide`: hue-keyed radial-gradient scene, floating emoji w/ glow, bottom
   gradient overlay (@name + verified check, greeting, Start chatting → CTA).
-- `ActionRail`: avatar + follow ＋ (→ `POST /api/favorites/:id`, flips to ✓),
-  ♥ like (optimistic toggle → `POST /api/characters/:id/like`, pop animation,
-  formatted count), 💬 (count = `chat_count`; tap = same as CTA), ↗ share
-  (`navigator.share` / clipboard toast via sonner).
+- `ActionRail`: TikTok-style solid filled icons (white, drop-shadow, no button
+  chrome; per the `FanMouth Mobile.html` revision) — avatar + follow ＋ (→
+  `POST /api/favorites/:id`, flips to ✓), ♥ like (solid heart, fills brand when
+  liked; optimistic toggle → `POST /api/characters/:id/like`, pop animation,
+  formatted count), 💬 filled bubble (count = `chat_count`; tap = same as CTA),
+  ↗ filled share arrow (`navigator.share` / clipboard toast via sonner).
 - CTA/💬 → `POST /api/chat/conversations { characterId }` → open chat overlay.
   (Optional dedupe: reuse the owner's latest conversation with that character
   instead of always creating — decide in implementation; inbox exists either way.)
@@ -241,17 +283,25 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 
 - `ChatsPage`: rows from enriched `GET /api/chat/conversations` — gradient avatar
   (character hue), name, relative time (`now/2m/1h/1d` formatter), one-line preview
-  (`last_message.content`), brand unread dot when `unread`. Tap → overlay.
+  (`last_message.content`), brand unread-count badge when `unread_count > 0`
+  (dot upgraded to a count per product decision). Tap → overlay (marks read,
+  which zeroes the row badge and decrements the tab total).
 - Swipe-to-delete is out; use a long-press/kebab → custom confirm dialog →
   `DELETE /api/chat/conversations/:id`.
 
 ### 3.6 Profile
 
-- `MePage`: avatar (emoji circle), `@handle` (user) or guest CTA, bio line w/
-  favorite team, stat row from `GET /api/me/stats`, Edit profile (dialog →
-  `PATCH /api/me/profile`; guests → localStorage name/team + signup CTA),
-  settings button (theme/logout for now), FAVORITES list from `GET /api/favorites`
-  with the design's dashed-border empty state; tap row → start/open chat.
+- `MePage` (per the `FanMouth Mobile.html` revision): gradient hero banner with ⚙
+  button; avatar circle overlapping the banner (dark border + brand ring);
+  `@handle` (user) or guest CTA; bio line w/ favorite team; stat row from
+  `GET /api/me/stats` framed by hairline top/bottom borders; **full-width brand
+  Edit-profile button** (dialog → `PATCH /api/me/profile`; guests → localStorage
+  name/team + signup CTA); ★ FAVORITES as a **horizontal avatar scroller** from
+  `GET /api/favorites` (brand-ringed hue-gradient circles + truncated names,
+  dashed empty state; tap → start/open chat); SETTINGS card list — Notifications
+  (static "On" for P0), Appearance (Dark; wired to the theme hook), Language
+  (static "English"), Help & feedback (mailto/link), plus Log out when
+  authenticated. Static rows render disabled-quiet; no dead-end alerts.
 
 ---
 
@@ -276,7 +326,7 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 | GET | /api/topics/today | public | **changed** — reel fields |
 | POST | /api/topics | admin | **changed** — accepts reel fields |
 | POST | /api/chat/conversations | guest ok | **changed** — optional `topicId` |
-| GET | /api/chat/conversations | guest ok | **changed** — last_message, unread |
+| GET | /api/chat/conversations | guest ok | **changed** — last_message, unread_count |
 | POST | /api/chat/conversations/:id/read | guest ok | **new** |
 | GET/PATCH | /api/me/profile | user | **new** |
 | GET | /api/me/stats | guest ok | **new** |
@@ -296,7 +346,7 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 1. **Migrations + characters repo** (2.1, 2.2, 2.3) — likes/favorites/counters live
 2. **Topics enrichment + topic-seeded chat** (2.4, 2.5)
 3. **Inbox enrichment + read state** (2.6)
-4. **Profile fields + stats** (2.7)
+4. **Profile fields + stats + guest→account merge** (2.7, 2.8)
 5. **Client shell + For You feed + action rail** (3.1, 3.2)
 6. **Topics reels + chat overlay** (3.3, 3.4)
 7. **Inbox + profile screens** (3.5, 3.6)
