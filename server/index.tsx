@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 
 import { helloRoutes } from './features/hello/router'
 import { characterRoutes } from './features/characters/router'
+import { favoriteRoutes } from './features/favorites/router'
 import { chatRoutes } from './features/chat/router'
 import { topicRoutes } from './features/topics/router'
 import { guestId } from './middleware/guestId'
@@ -48,6 +49,7 @@ app.use('/api/*', guestId)
 // Feature routes
 app.route('/api/hello', helloRoutes)
 app.route('/api/characters', characterRoutes)
+app.route('/api/favorites', favoriteRoutes)
 app.route('/api/chat', chatRoutes)
 app.route('/api/topics', topicRoutes)
 
