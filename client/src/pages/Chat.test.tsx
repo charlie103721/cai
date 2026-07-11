@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, Link } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import Chat from './Chat'
+import Chat, { ChatRoute } from './Chat'
 import { getConversation } from '@/lib/chat'
 
 // ── fake WebSocket manager ───────────────────────────────
@@ -139,5 +139,55 @@ describe('Chat — live over the socket', () => {
 
     expect(await screen.findByText(/used up the free chats/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign up' })).toBeInTheDocument()
+  })
+})
+
+describe('ChatRoute — remounts on conversation change (desktop chat→chat)', () => {
+  function conversationFor(id: string) {
+    return {
+      conversation: {
+        id,
+        character_id: 'arg',
+        title: null,
+        type: 'dm' as const,
+        topic_id: null,
+        last_read_seq: 0,
+        created_at: '2026-07-11T10:00:00Z',
+        updated_at: '2026-07-11T10:00:00Z',
+      },
+      messages: [],
+      character: { id: 'arg', name: 'Old-Timer Argento', emoji: '🇦🇷', tagline: 't', greeting: 'g' },
+    }
+  }
+
+  it('does not leak conversation A local bubbles into conversation B in place', async () => {
+    vi.mocked(getConversation).mockImplementation(async (id: string) => conversationFor(id))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/chat/conv1']}>
+          {/* Persistent sidebar-style link: navigates chat→chat while the matched
+              route element stays mounted (only the :conversationId param changes). */}
+          <Link to="/chat/conv2">to conv2</Link>
+          <Routes>
+            <Route path="/chat/:conversationId" element={<ChatRoute />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    // Optimistic bubble lives only in conv1's Chat instance.
+    await sendText('leaky bubble')
+    expect(await screen.findByText('leaky bubble')).toBeInTheDocument()
+
+    // Navigate to conv2 in place. Without key={conversationId}, the same Chat
+    // instance would keep 'leaky bubble' in localMsgs and render it in conv2.
+    fireEvent.click(screen.getByText('to conv2'))
+
+    // conv2 renders fresh; the composer proves the new instance mounted…
+    await waitFor(() => expect(vi.mocked(getConversation)).toHaveBeenCalledWith('conv2'))
+    await screen.findByPlaceholderText(/Message Old-Timer/)
+    // …and conv1's bubble is gone.
+    expect(screen.queryByText('leaky bubble')).not.toBeInTheDocument()
   })
 })

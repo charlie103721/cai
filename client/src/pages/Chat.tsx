@@ -155,7 +155,7 @@ export default function Chat() {
     const offError = ws.on('error', (f) => {
       // Only errors tied to one of our optimistic sends concern this view.
       if (!f.clientMsgId || !pendingRef.current.has(f.clientMsgId)) return
-      failSend(f.code, f.clientMsgId)
+      failSend(f.code, f.clientMsgId, f.retryAfter)
     })
     return () => {
       offAck()
@@ -329,6 +329,18 @@ export default function Chat() {
       </footer>
     </div>
   )
+}
+
+/**
+ * Route wrapper that remounts a fresh `Chat` on every conversation change. The
+ * desktop sidebar's RECENT list links chat→chat while the matched route element
+ * stays mounted (only the `:conversationId` param changes); keying on
+ * `conversationId` resets ALL of Chat's local state (optimistic bubbles, the
+ * favorite override, typing) so one thread never leaks into another.
+ */
+export function ChatRoute() {
+  const { conversationId = '' } = useParams()
+  return <Chat key={conversationId} />
 }
 
 function Bubble({ m, emoji }: { m: DisplayMessage; emoji: string }) {

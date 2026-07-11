@@ -85,6 +85,8 @@ export const errorFrameSchema = z.object({
   type: z.literal('error'),
   clientMsgId: z.string().optional(),
   code: z.string(),
+  /** Seconds until the client may retry — set on RATE_LIMITED (mirrors REST Retry-After). */
+  retryAfter: z.number().optional(),
 })
 
 export const pongFrameSchema = z.object({

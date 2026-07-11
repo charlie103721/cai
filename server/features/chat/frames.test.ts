@@ -115,4 +115,17 @@ describe('serverFrameSchema', () => {
       serverFrameSchema.safeParse({ type: 'error', clientMsgId: uuid, code: 'RATE_LIMITED' }).success,
     ).toBe(true)
   })
+
+  test('error frame allows optional retryAfter (RATE_LIMITED retry hint)', () => {
+    const parsed = serverFrameSchema.safeParse({
+      type: 'error',
+      clientMsgId: uuid,
+      code: 'RATE_LIMITED',
+      retryAfter: 12,
+    })
+    expect(parsed.success).toBe(true)
+    if (parsed.success && parsed.data.type === 'error') {
+      expect(parsed.data.retryAfter).toBe(12)
+    }
+  })
 })

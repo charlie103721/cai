@@ -140,6 +140,8 @@ export class ConnectionHub extends DurableObject<CloudflareBindings> {
           kind === 'user'
             ? FRAME_ERROR_CODES.RATE_LIMITED
             : FRAME_ERROR_CODES.GUEST_LIMIT_REACHED,
+        // RATE_LIMITED 带上 retry-after（同 REST 的 Retry-After 头），让客户端显示精确文案。
+        retryAfter: kind === 'user' ? limit.retryAfterSeconds : undefined,
       })
       return
     }
