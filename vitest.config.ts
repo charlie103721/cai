@@ -7,6 +7,9 @@ export default defineConfig({
         test: {
           name: "server",
           include: ["server/**/*.test.ts"],
+          // ConnectionHub DO tests run in the workers pool (separate project
+          // below), not in the plain node pool.
+          exclude: ["**/node_modules/**", "**/*.workers.test.ts"],
         },
       },
       {
@@ -16,6 +19,8 @@ export default defineConfig({
           environment: "jsdom",
         },
       },
+      // Durable Object protocol tests — @cloudflare/vitest-pool-workers (workerd).
+      "./vitest.workers.config.ts",
     ],
   },
 });

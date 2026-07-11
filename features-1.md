@@ -378,7 +378,7 @@ devices.
 smuggled; merge moves rows; collision keeps the user's row; second run no-op;
 cookie cleared.
 
-### ⬜ F6 — WebSocket: ConnectionHub Durable Object + client transport lib
+### ✅ F6 — WebSocket: ConnectionHub Durable Object + client transport lib
 
 *Depends on F3.*
 

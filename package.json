@@ -5,6 +5,8 @@
 		"serve:client": "vite --host",
 		"serve:server": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun --watch run --env-file=.env server/dev.ts",
 		"local": "concurrently --kill-others-on-fail -n client,server -c blue,green \"bun run serve:client\" \"bun run serve:server\"",
+		"serve:worker": "sh -c 'set -a; . ./.env; exec wrangler dev --port ${PORT:-8443}'",
+		"local:worker": "concurrently --kill-others-on-fail -n client,server -c blue,green \"bun run serve:client\" \"bun run serve:worker\"",
 		"build": "vite build",
 		"preview": "bun run build && wrangler dev",
 		"deploy": "bun run build && bun run db:migrate:prod && wrangler deploy",
@@ -44,13 +46,16 @@
 		"zod": "4.3.6"
 	},
 	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.18.4",
 		"@eslint/js": "10.0.1",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "25.2.3",
 		"@types/react": "19.2.14",
 		"@types/react-dom": "19.2.3",
 		"@vitejs/plugin-react": "5.1.4",
-		"@vitest/browser": "4.0.18",
+		"@vitest/browser": "^4.1.0",
+		"@vitest/runner": "4.1.10",
+		"@vitest/snapshot": "4.1.10",
 		"better-sqlite3": "^12.9.0",
 		"concurrently": "9.2.1",
 		"drizzle-kit": "0.31.9",
@@ -65,7 +70,7 @@
 		"typescript": "^5.9",
 		"typescript-eslint": "8.55.0",
 		"vite": "6.4.1",
-		"vitest": "4.0.18",
+		"vitest": "^4.1.0",
 		"wrangler": "4.65.0"
 	}
 }
