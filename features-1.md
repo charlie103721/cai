@@ -100,7 +100,7 @@ for the React/Babel CDN). Kit notes in [`dp/qiumi-app/README.md`](./dp/qiumi-app
 
 ### ✅ = merged | 🔨 = in progress | ⬜ = not started
 
-### ⬜ F1 — Chat domain schema + shared owner module
+### ✅ F1 — Chat domain schema + shared owner module
 
 *No dependencies. Everything else depends on this.*
 
