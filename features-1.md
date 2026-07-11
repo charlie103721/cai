@@ -459,7 +459,7 @@ order, idempotent resend, rate-limit error frame) via
 `@cloudflare/vitest-pool-workers` (new dev dep, separate vitest project);
 service behavior already covered through the F3 REST seam.
 
-### ⬜ F7 — Client: design tokens, shell, For You feed, topic reels
+### ✅ F7 — Client: design tokens, shell, For You feed, topic reels
 
 *Depends on F2, F4.*
 

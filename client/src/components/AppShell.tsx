@@ -1,122 +1,169 @@
-import { useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Check, LogOut } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
-import { signOut } from '@/lib/auth'
-import { Button } from '@/components/ui/button'
-import { getConversations, deleteConversation } from '@/lib/chat'
+import type { ReactNode } from 'react'
+import { Link, Outlet, useLocation } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
+import { getConversations } from '@/lib/chat'
+
+/** Nav glyphs shared by the desktop sidebar and the mobile tab bar. */
+const NAV_ICONS: Record<string, ReactNode> = {
+  feed: <path d="M3 10.5 12 3l9 7.5M5 9v11h14V9" />,
+  topics: <path d="M12 3s5 3.5 5 8a5 5 0 0 1-10 0c0-1.5.8-2.6.8-2.6s.7 1.4 1.7 1.4c0-2.2.9-3.8 2.5-6.2z" />,
+  messages: <path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z" />,
+  me: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" />
+    </>
+  ),
+}
+
+interface NavItem {
+  key: string
+  path: string
+  label: string
+}
+
+const NAV: NavItem[] = [
+  { key: 'feed', path: '/', label: 'For You' },
+  { key: 'topics', path: '/topics', label: 'Topics' },
+  { key: 'messages', path: '/chats', label: 'Chats' },
+  { key: 'me', path: '/me', label: 'Me' },
+]
+
+// Mobile tab bar keeps the design's Home wording for the feed.
+const TAB_LABELS: Record<string, string> = { feed: 'Home', topics: 'Topics', messages: 'Chats', me: 'Me' }
 
 /**
- * 响应式外壳：桌面端（md+）左侧会话侧边栏 + 右侧内容区，
- * 移动端隐藏侧边栏，页面自己负责导航。
+ * Responsive app shell — one shell, two frames switching at Tailwind `lg`.
+ * Mobile (< lg): status spacer + content + bottom TabBar; TopTabs float over
+ * the feed screens. Desktop (lg+): 240px Sidebar with RECENT chats + content.
+ * Rendered as a layout route; pages render into <Outlet/>.
  */
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell() {
+  const { pathname } = useLocation()
+  const activeKey =
+    pathname === '/topics'
+      ? 'topics'
+      : pathname === '/chats'
+        ? 'messages'
+        : pathname === '/me'
+          ? 'me'
+          : pathname === '/'
+            ? 'feed'
+            : null
+  const showTopTabs = pathname === '/' || pathname === '/topics'
+
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#0c0c0d] text-white lg:flex-row">
+      <DesktopSidebar activeKey={activeKey} />
+      {/* status-bar spacer (mobile only) */}
+      <div className="h-[30px] shrink-0 lg:hidden" />
+      <main className="relative flex min-h-0 flex-1 flex-col">
+        {showTopTabs && <TopTabs active={activeKey === 'topics' ? 'topics' : 'feed'} />}
+        <div className="min-h-0 flex-1">
+          <Outlet />
+        </div>
+      </main>
+      <MobileTabBar activeKey={activeKey} />
     </div>
   )
 }
 
-function Sidebar() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { id: activeId } = useParams()
-  const { isAuthenticated, session } = useAuth()
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+function NavIcon({ name, active, size }: { name: string; active: boolean; size: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={active ? 'var(--brand)' : 'currentColor'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      {NAV_ICONS[name]}
+    </svg>
+  )
+}
 
+function TopTabs({ active }: { active: 'feed' | 'topics' }) {
+  const tab = (key: 'feed' | 'topics', to: string, label: string) => (
+    <Link
+      to={to}
+      style={{
+        fontSize: 15,
+        fontWeight: active === key ? 700 : 500,
+        color: active === key ? '#fff' : 'rgba(255,255,255,.55)',
+        textShadow: '0 1px 3px rgba(0,0,0,.5)',
+        padding: '0 2px 3px',
+        borderBottom: active === key ? '2px solid var(--brand)' : '2px solid transparent',
+        transition: 'color .2s',
+      }}
+    >
+      {label}
+    </Link>
+  )
+  return (
+    <div className="lg:hidden" style={{ position: 'absolute', top: 6, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'center', gap: 22 }}>
+      {tab('feed', '/', 'For You')}
+      {tab('topics', '/topics', 'Topics')}
+    </div>
+  )
+}
+
+function MobileTabBar({ activeKey }: { activeKey: string | null }) {
+  return (
+    <nav
+      className="lg:hidden"
+      style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-around', borderTop: '1px solid rgba(255,255,255,.08)', background: '#0c0c0d', zIndex: 35 }}
+    >
+      {NAV.map((item) => {
+        const on = activeKey === item.key
+        return (
+          <Link
+            key={item.key}
+            to={item.path}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: on ? 600 : 400, color: on ? '#fff' : 'rgba(255,255,255,.42)' }}
+          >
+            <NavIcon name={item.key} active={on} size={21} />
+            {TAB_LABELS[item.key]}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
+function DesktopSidebar({ activeKey }: { activeKey: string | null }) {
   const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations })
-
-  const remove = useMutation({
-    mutationFn: deleteConversation,
-    onSuccess: (_data, deletedId) => {
-      void queryClient.invalidateQueries({ queryKey: ['conversations'] })
-      setConfirmingId(null)
-      if (deletedId === activeId) navigate('/')
-    },
-  })
+  const recents = (conversations.data ?? [])
+    .slice()
+    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+    .slice(0, 6)
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex items-center justify-between p-4">
-        <Link to="/" className="text-lg font-bold">
-          ⚽ 球迷嘴替
-        </Link>
-        <Button variant="outline" size="sm" asChild>
-          <Link to="/">
-            <Plus className="size-4" /> 开新对话
+    <aside className="hidden w-60 flex-none flex-col border-r border-white/10 bg-[#0a0a0b] px-3 py-5 lg:flex">
+      <Link to="/" className="flex items-center gap-2 px-2.5 pb-[18px] text-[19px] font-extrabold">
+        ⚽ FanMouth
+      </Link>
+      <nav className="flex flex-col gap-1">
+        {NAV.map((item) => {
+          const on = activeKey === item.key
+          return (
+            <Link
+              key={item.key}
+              to={item.path}
+              className="flex items-center gap-3 rounded-[10px] px-3 py-[11px] text-[15px]"
+              style={{ background: on ? 'rgba(255,255,255,.08)' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,.62)', fontWeight: on ? 700 : 500 }}
+            >
+              <NavIcon name={item.key} active={on} size={22} />
+              {item.label}
+            </Link>
+          )
+        })}
+      </nav>
+      <div className="mx-2.5 mb-2 mt-[22px] text-[11px] font-semibold tracking-[.05em] text-white/40">RECENT</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+        {recents.map((conv) => (
+          <Link
+            key={conv.id}
+            to={`/chat/${conv.id}`}
+            className="flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-white/80"
+          >
+            <span className="text-[22px] leading-none">{conv.character?.emoji ?? '💬'}</span>
+            <span className="truncate text-[13.5px] font-semibold">{conv.character?.name ?? 'Chat'}</span>
           </Link>
-        </Button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        <p className="px-2 pb-2 text-xs font-medium text-muted-foreground">最近聊过</p>
-        {conversations.data?.length === 0 && (
-          <p className="px-2 text-sm text-muted-foreground">还没有对话，挑个角色开聊吧</p>
-        )}
-        <ul className="flex flex-col gap-1">
-          {(conversations.data ?? []).map((conv) => (
-            <li key={conv.id} className="group relative">
-              <Link
-                to={`/chat/${conv.id}`}
-                className={`flex items-center gap-2 rounded-md px-2 py-2 pr-9 text-sm transition-colors hover:bg-sidebar-accent ${
-                  conv.id === activeId ? 'bg-sidebar-accent font-medium' : ''
-                }`}
-              >
-                <span className="text-lg">{conv.character?.emoji ?? '💬'}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{conv.character?.name ?? '未知角色'}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {conv.title ?? '新对话'}
-                  </span>
-                </span>
-              </Link>
-              <button
-                aria-label={confirmingId === conv.id ? '确认删除' : '删除对话'}
-                className={`absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 transition-opacity ${
-                  confirmingId === conv.id
-                    ? 'bg-destructive text-white opacity-100'
-                    : 'text-muted-foreground opacity-0 hover:bg-sidebar-accent group-hover:opacity-100'
-                }`}
-                onClick={() => {
-                  if (confirmingId === conv.id) remove.mutate(conv.id)
-                  else setConfirmingId(conv.id)
-                }}
-                onBlur={() => setConfirmingId(null)}
-              >
-                {confirmingId === conv.id ? (
-                  <Check className="size-3.5" />
-                ) : (
-                  <Trash2 className="size-3.5" />
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="border-t p-3">
-        {isAuthenticated ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-xs text-muted-foreground">
-              {session?.user.email}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => void signOut()}>
-              <LogOut className="size-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <Button size="sm" className="flex-1" asChild>
-              <Link to="/login">登录</Link>
-            </Button>
-            <Button size="sm" variant="outline" className="flex-1" asChild>
-              <Link to="/signup">注册</Link>
-            </Button>
-          </div>
-        )}
+        ))}
       </div>
     </aside>
   )
