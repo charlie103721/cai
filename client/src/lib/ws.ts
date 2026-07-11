@@ -54,6 +54,8 @@ export interface ErrorFrame {
   type: 'error'
   clientMsgId?: string
   code: string
+  /** Seconds until the client may retry — set on RATE_LIMITED (mirrors REST Retry-After). */
+  retryAfter?: number
 }
 export interface PongFrame {
   type: 'pong'

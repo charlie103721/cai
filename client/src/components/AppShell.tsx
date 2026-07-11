@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { getConversations } from '@/lib/chat'
+import { unreadTotal, unreadLabel } from '@/lib/conversations'
+import { useConversationsSync } from '@/hooks/useConversationsSync'
 
 /** Nav glyphs shared by the desktop sidebar and the mobile tab bar. */
 const NAV_ICONS: Record<string, ReactNode> = {
@@ -40,6 +42,9 @@ const TAB_LABELS: Record<string, string> = { feed: 'Home', topics: 'Topics', mes
  */
 export function AppShell() {
   const { pathname } = useLocation()
+  useConversationsSync()
+  const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations })
+  const unread = unreadTotal(conversations.data)
   const activeKey =
     pathname === '/topics'
       ? 'topics'
@@ -54,7 +59,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#0c0c0d] text-white lg:flex-row">
-      <DesktopSidebar activeKey={activeKey} />
+      <DesktopSidebar activeKey={activeKey} unread={unread} />
       {/* status-bar spacer (mobile only) */}
       <div className="h-[30px] shrink-0 lg:hidden" />
       <main className="relative flex min-h-0 flex-1 flex-col">
@@ -63,7 +68,7 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
-      <MobileTabBar activeKey={activeKey} />
+      <MobileTabBar activeKey={activeKey} unread={unread} />
     </div>
   )
 }
@@ -101,7 +106,32 @@ function TopTabs({ active }: { active: 'feed' | 'topics' }) {
   )
 }
 
-function MobileTabBar({ activeKey }: { activeKey: string | null }) {
+/** Brand unread badge (tab bar / sidebar); hidden when count is 0. */
+function UnreadBadge({ count, style }: { count: number; style?: React.CSSProperties }) {
+  if (count <= 0) return null
+  return (
+    <span
+      aria-label={`${count} unread`}
+      style={{
+        minWidth: 17,
+        height: 17,
+        padding: '0 5px',
+        borderRadius: 9999,
+        background: 'var(--brand)',
+        color: 'var(--brand-foreground)',
+        fontSize: 10.5,
+        fontWeight: 700,
+        lineHeight: '17px',
+        textAlign: 'center',
+        ...style,
+      }}
+    >
+      {unreadLabel(count)}
+    </span>
+  )
+}
+
+function MobileTabBar({ activeKey, unread }: { activeKey: string | null; unread: number }) {
   return (
     <nav
       className="lg:hidden"
@@ -115,7 +145,12 @@ function MobileTabBar({ activeKey }: { activeKey: string | null }) {
             to={item.path}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: on ? 600 : 400, color: on ? '#fff' : 'rgba(255,255,255,.42)' }}
           >
-            <NavIcon name={item.key} active={on} size={21} />
+            <span style={{ position: 'relative', display: 'flex' }}>
+              <NavIcon name={item.key} active={on} size={21} />
+              {item.key === 'messages' && (
+                <UnreadBadge count={unread} style={{ position: 'absolute', top: -6, left: 12 }} />
+              )}
+            </span>
             {TAB_LABELS[item.key]}
           </Link>
         )
@@ -124,7 +159,7 @@ function MobileTabBar({ activeKey }: { activeKey: string | null }) {
   )
 }
 
-function DesktopSidebar({ activeKey }: { activeKey: string | null }) {
+function DesktopSidebar({ activeKey, unread }: { activeKey: string | null; unread: number }) {
   const conversations = useQuery({ queryKey: ['conversations'], queryFn: getConversations })
   const recents = (conversations.data ?? [])
     .slice()
@@ -147,7 +182,8 @@ function DesktopSidebar({ activeKey }: { activeKey: string | null }) {
               style={{ background: on ? 'rgba(255,255,255,.08)' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,.62)', fontWeight: on ? 700 : 500 }}
             >
               <NavIcon name={item.key} active={on} size={22} />
-              {item.label}
+              <span>{item.label}</span>
+              {item.key === 'messages' && <UnreadBadge count={unread} style={{ marginLeft: 'auto' }} />}
             </Link>
           )
         })}
