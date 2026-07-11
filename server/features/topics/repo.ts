@@ -10,7 +10,8 @@ export async function findActiveTopicsByDate(db: DB, topicDate: string) {
     .select()
     .from(daily_topics)
     .where(and(eq(daily_topics.topic_date, topicDate), eq(daily_topics.is_active, true)))
-    .orderBy(desc(daily_topics.created_at))
+    // Pinned reels float to the top of the feed; newest-first within each group.
+    .orderBy(desc(daily_topics.pinned), desc(daily_topics.created_at))
 }
 
 /** 按 id 查话题（不筛 is_active）；调用方自行判断是否可用。 */
@@ -21,7 +22,18 @@ export async function findTopicById(db: DB, id: string) {
 
 export async function insertTopic(
   db: DB,
-  data: { topic_date: string; title: string; content: string },
+  data: {
+    topic_date: string
+    title: string
+    content: string
+    headline: string
+    heat: number
+    // tags / character_ids are already JSON-serialized text (router stringifies).
+    tags: string
+    character_ids: string
+    hue: number
+    pinned: boolean
+  },
 ) {
   const [row] = await db
     .insert(daily_topics)
