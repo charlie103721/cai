@@ -1,6 +1,6 @@
 ---
 description: Idle-timeout scheduler around /build-next-feature. Builds the roadmap continuously (one feature after another, merging clean work), rechecks every 1 hour when nothing is eligible, and ENDS the session once nothing has been eligible for a full day (24h). Finding buildable work resets the idle clock. It delegates ALL build/review/merge logic to /build-next-feature; this command owns only the schedule and the idle deadline.
-argument-hint: "[roadmap files, space-separated; default FEATURES.md]"
+argument-hint: "[roadmap files, space-separated; default features-1.md]"
 ---
 
 <!--
@@ -21,7 +21,7 @@ argument-hint: "[roadmap files, space-separated; default FEATURES.md]"
 
 > Run at the **top level** (directly, or let its own `send_later` ticks drive it). It reuses `/build-next-feature` as its engine — do not duplicate that logic here.
 
-Roadmap files, in priority order: **$ARGUMENTS** (if empty, `FEATURES.md`). Pass these to `/build-next-feature` on every tick and thread them through the wakeup messages below.
+Roadmap files, in priority order: **$ARGUMENTS** (if empty, `features-1.md`). Pass these to `/build-next-feature` on every tick and thread them through the wakeup messages below.
 
 **Purpose:** keep `/build-next-feature` working a roadmap for as long as features remain buildable, then stop by itself once it's been idle for a day — without you typing `/loop`.
 

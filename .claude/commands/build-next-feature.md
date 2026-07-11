@@ -1,6 +1,6 @@
 ---
 description: Build the next eligible feature from the given roadmap file(s), review it locally, auto-fix issues, then MERGE if clean. If anything still needs a human, it opens a needs-review PR (unmerged) and moves on — it never halts the loop. Orchestrates feature-builder + code-reviewer subagents. One feature per invocation — run under /loop to work a roadmap continuously.
-argument-hint: "[roadmap files, space-separated; default FEATURES.md]"
+argument-hint: "[roadmap files, space-separated; default features-1.md]"
 ---
 
 <!--
@@ -16,7 +16,7 @@ argument-hint: "[roadmap files, space-separated; default FEATURES.md]"
 -->
 
 Roadmap files, in priority order: **$ARGUMENTS**
-(If that is empty, use `FEATURES.md`.)
+(If that is empty, use `features-1.md`.)
 
 > Run this at the **top level** (directly, or under `/loop` in the main session) — it spawns subagents, so it must run in the main thread, not inside another subagent.
 
@@ -40,7 +40,7 @@ Do exactly **ONE** iteration. You (main) orchestrate; subagents do the work and 
 
 4. **Merge (code is CLEAN).** Guard against the concurrent Codex agent having moved `main`:
    - `git -C <worktree> fetch origin && git -C <worktree> rebase origin/main`. On conflict → `STATUS: 🔧 <id> resolving merge conflict` Spawn **feature-builder** RESOLVE (worktree + the conflicting files from `git -C <worktree> status`): resolve every conflict in favor of preserving BOTH mainline changes and the feature's intent, then `git -C <worktree> add -A && git -C <worktree> rebase --continue` until the rebase completes. If the builder returns `BLOCKED` (conflict too entangled to resolve safely) → `git -C <worktree> rebase --abort`, then **open-review-PR** (cause = `merge conflict with main`), end iteration.
-   - Re-gate after rebase — run the **FULL gate**, not just typecheck/tests: `bun run tsc --noEmit -p tsconfig.json` · `bun run lint` · `bun run test:run` · `bun run build` in the worktree (the rebase can reintroduce lint failures or a broken bundle the pre-rebase gate never saw). On failure → **open-review-PR** (cause = `broke after rebase`), end iteration.
+   - Re-gate after rebase — run the **FULL gate**, not just typecheck/tests: `bun run typecheck` · `bun run lint` · `bun run test:run` · `bun run build` in the worktree (the rebase can reintroduce lint failures or a broken bundle the pre-rebase gate never saw). On failure → **open-review-PR** (cause = `broke after rebase`), end iteration.
    - If conflicts were resolved, re-review once: spawn **code-reviewer** on the rebased worktree. `ISSUES` → **open-review-PR** (cause = the findings after conflict resolution), end iteration. `CLEAN` → continue.
    - `git -C <worktree> push -u origin <branch>` → `gh pr create --base main --head <branch> --title "…" --body "…built · passed local gate · passed independent review…"` → `gh pr merge <n> --merge --delete-branch` → `git worktree remove <worktree> --force`.
    - `STATUS: ✅ <id> merged (PR #<n>)`. The loop continues to the next feature — the next iteration's **Pick** step fast-forwards local `main` first, so the merged roadmap state is what gets scanned.

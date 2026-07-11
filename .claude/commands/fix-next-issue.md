@@ -7,7 +7,7 @@ argument-hint: "(none — picks the next open issue labelled agent-fix)"
   COMMAND: /fix-next-issue — the synchronous, issue-driven bug-fix loop.
   Why it exists: to burn down a triaged bug backlog the same way /build-next-feature
     burns down a roadmap — pick, fix, review, auto-fix, merge — but sourced from
-    GitHub issues instead of a FEATURES.md file, with the fix PR closing the issue.
+    GitHub issues instead of a roadmap file, with the fix PR closing the issue.
   How it works: ONE issue per invocation. Picks the first open issue labelled
     `agent-fix` with no in-progress agent:* label and no linked PR/branch, spawns
     issue-fixer to reproduce + fix it (with a regression test) in an isolated
@@ -60,7 +60,7 @@ Do exactly **ONE** iteration. You (main) orchestrate; subagents do the work and 
 
 4. **Merge (fix is CLEAN).** Guard against a concurrent agent having moved `main`:
    - `git -C <worktree> fetch origin && git -C <worktree> rebase origin/main`. On conflict → `git -C <worktree> rebase --abort`, then **open-review-PR** (cause = `merge conflict with main`), end iteration.
-   - Re-gate after rebase — run the **FULL gate**, not just typecheck/tests: `bun run tsc --noEmit -p tsconfig.json` · `bun run lint` · `bun run test:run` · `bun run build` in the worktree (the rebase can reintroduce lint failures or a broken bundle the pre-rebase gate never saw). On failure → **open-review-PR** (cause = `broke after rebase`), end iteration.
+   - Re-gate after rebase — run the **FULL gate**, not just typecheck/tests: `bun run typecheck` · `bun run lint` · `bun run test:run` · `bun run build` in the worktree (the rebase can reintroduce lint failures or a broken bundle the pre-rebase gate never saw). On failure → **open-review-PR** (cause = `broke after rebase`), end iteration.
    - `git -C <worktree> push -u origin <branch>` → `gh pr create --base main --head <branch> --title "fix #<issue>: <short title>" --body "Closes #<issue>.\n\n…reproduced with a regression test · passed local gate · passed independent review…"` → `gh pr merge <n> --merge --delete-branch` → `git worktree remove <worktree> --force`.
    - The merge closes the issue via `Closes #<issue>`. `STATUS: ✅ #<issue> fixed & merged (PR #<n>)`. The loop continues to the next issue.
 

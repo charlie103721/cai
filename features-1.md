@@ -67,6 +67,13 @@ for the React/Babel CDN). Kit notes in [`dp/qiumi-app/README.md`](./dp/qiumi-app
   Object) onward requires `wrangler dev` for the server half — see F6.
   CHECK constraints and enum-ish values are app-enforced (Zod) — D1 can't add
   CHECKs without table rebuilds.
+- **Deploys are MANUAL — merging to main never deploys.** CI (deploy.yml) runs
+  checks only (`typecheck` · `lint` · `test:run` · `build`) on pushes/PRs;
+  production ships only via the manual `workflow_dispatch` or `bun run deploy`.
+  Prod DB migrations run as part of that manual deploy, never on merge.
+- **The local gate every feature must pass** (feature-builder runs these in its
+  worktree): `bun run typecheck` · `bun run lint` · `bun run test:run` ·
+  `bun run build`, plus driving the real API/app for the changed surface.
 
 ---
 
@@ -215,8 +222,10 @@ sendMessage(params: {
 ```
 
 1. **Idempotency**: if `clientMsgId` matches an existing
-   `(conversation_id, client_msg_id)` row → return that user message + the
-   assistant messages that followed it (no LLM call).
+   `(conversation_id, client_msg_id)` row → return that user message + its
+   reply turn — the assistant messages with `seq` greater than the user
+   message's and smaller than the next `role='user'` message's seq (or end of
+   conversation) — with no LLM call.
 2. Build context = last 30 stored messages + new content **in-memory**
    (do NOT insert first).
 3. `buildSystemPrompt(db, character, seededTopic?)` — see topic seeding below.
@@ -225,13 +234,16 @@ sendMessage(params: {
    `---` as the separator.
 4. `completeChatCompletion` → split on `/\n---\n/`, trim, drop empties, cap 3;
    no delimiter → one bubble (graceful fallback).
-5. **Atomic batch**: assign consecutive `seq` via the
-   `INSERT … SELECT COALESCE(MAX(seq),0)+k` pattern inside ONE `db.batch()`:
-   user message (`role:'user'`, `client_msg_id`), each bubble
-   (`role:'assistant'`, `sender_character_id: character.id`), then
-   `touchConversation` (+ title = first user message, ≤30 chars). LLM failure →
-   throw; **nothing persisted** (router → 503 `CHAT_UNAVAILABLE`; client keeps
-   composer text; retry = plain resend).
+5. **Atomic batch**: ONE `db.batch()` containing, in order: the user message
+   insert, each bubble insert (`role:'assistant'`,
+   `sender_character_id: character.id`), then `touchConversation` (+ title =
+   first user message, ≤30 chars). **Each insert assigns its own seq inline**
+   with `INSERT … SELECT …, COALESCE((SELECT MAX(seq) FROM chat_messages WHERE
+   conversation_id = ?), 0) + 1, …` — the batch executes serially, so each
+   statement sees the previous one's row and the seqs come out consecutive
+   (no `+k` offsets to compute in JS). LLM failure → throw; **nothing
+   persisted** (router → 503 `CHAT_UNAVAILABLE`; client keeps composer text;
+   retry = plain resend).
 
 `createConversationWithGreeting`: greeting gets `seq=1` + `sender_character_id`;
 conversation gets `last_read_seq=1` + a `conversation_characters` row; optional
@@ -330,11 +342,19 @@ cookie cleared.
 and `"migrations": [{"tag": "v1", "new_sqlite_classes": ["ConnectionHub"]}]`.
 Export the class from `server/index.tsx`. Run `bun run cf-typegen`.
 
-**Dev workflow (required)**: DOs don't exist in plain Bun. Add script
-`"local:worker": "concurrently -n client,server \"bun run serve:client\" \"wrangler dev --port $PORT\""`
-(PORT from `.env`, matching the Vite proxy — never hardcode) and use it from this
-feature on; keep `bun run local` for non-DO work. In `vite.config.ts`, set
-`ws: true` on the `/api` proxy.
+**Dev workflow (required)**: DOs don't exist in plain Bun, so this feature runs
+the server half under `wrangler dev` (workerd emulates DO/D1 locally). Note:
+package.json scripts do NOT load `.env`, so `$PORT` won't expand there — source
+it explicitly. Add scripts:
+
+```json
+"serve:worker": "sh -c 'set -a; . ./.env; exec wrangler dev --port ${PORT:-8443}'",
+"local:worker": "concurrently --kill-others-on-fail -n client,server -c blue,green \"bun run serve:client\" \"bun run serve:worker\""
+```
+
+Use `bun run local:worker` from this feature on; `bun run local` stays for
+non-DO work. In `vite.config.ts`, add `ws: true` to the `/api` proxy entry
+(it currently only sets `target`/`changeOrigin`).
 
 **Frame protocol** (JSON, discriminated by `type`; Zod schemas shared in
 `server/features/chat/frames.ts`, types mirrored client-side). There is no
@@ -372,6 +392,12 @@ the same frame):
 resolve the owner; non-upgrade requests → 426;
 `env.CONNECTION_HUB.idFromName(ownerKey).fetch('…/connect', req)` with
 `ownerKey = 'user:<id>' | 'guest:<id>'` passed via internal header.
+Identity caveat: don't rely on SETTING a fresh guest cookie on this route (the
+101 response comes from the DO, so middleware Set-Cookie headers won't reach the
+client) — read the existing cookie only. In practice the client always makes
+REST calls (characters, conversations) before connecting, so the cookie exists;
+if somehow neither user nor guest cookie is present, reject with 401 and let the
+client's reconnect-after-REST retry handle it.
 
 **Client transport lib** (`client/src/lib/ws.ts`, no UI changes yet): connect on
 app mount (`wss` same-origin `/api/ws`); TS frame types; auto-reconnect with

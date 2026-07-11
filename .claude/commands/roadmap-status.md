@@ -1,6 +1,6 @@
 ---
 description: Show the status of every feature across the given roadmap file(s) — done, in review, blocked, or todo — by cross-referencing the roadmap with open PRs and branches. Read-only.
-argument-hint: "[roadmap files; default FEATURES.md]"
+argument-hint: "[roadmap files; default features-1.md]"
 ---
 
 <!--
@@ -13,7 +13,7 @@ argument-hint: "[roadmap files; default FEATURES.md]"
     commits, or merges — safe to run any time.
 -->
 
-Roadmap files: **$ARGUMENTS** (if empty, `FEATURES.md`). **Read-only** — do not modify, commit, or merge anything.
+Roadmap files: **$ARGUMENTS** (if empty, `features-1.md`). **Read-only** — do not modify, commit, or merge anything.
 
 Report the current state of the roadmap:
 

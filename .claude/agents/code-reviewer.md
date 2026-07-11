@@ -13,7 +13,7 @@ You review **one** feature's changes cold and return a verdict. Input: a **workt
 1. **See the change.** `git -C <worktree> diff origin/main...HEAD` and `git -C <worktree> status`. Read files inside the worktree for surrounding context. You may run `/code-review high` from inside the worktree for a deeper pass — never `/code-review ultra` (billed/cloud).
 2. **Judge** only what justifies blocking a merge:
    - **Correctness** — logic errors, unhandled edge cases, concurrency holes, missing owner-scoping (an entity-by-id query that does not also filter by user_id/guest_id), JS-side timestamps in SQL updates, unvalidated request bodies.
-   - **Conventions & Locked Decisions** — router/service/repo layering, Zod at boundaries, `ok()`/`fail()`, snake_case DB, conditional SQL writes; every Locked Decision in `FEATURES.md`.
+   - **Conventions & Locked Decisions** — router/service/repo layering, Zod at boundaries, `ok()`/`fail()`, snake_case DB, conditional SQL writes; every Locked Decision in the roadmap file (`features-1.md`).
    - **Tests** — the core logic has tests that actually assert behavior.
    - **Completeness** — implemented (not stubbed) and the roadmap checkbox was flipped `✅`.
 3. Return **EXACTLY** one, and nothing else:
