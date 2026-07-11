@@ -63,11 +63,24 @@ export interface ConversationListItem extends Conversation {
   unread_count: number
 }
 
+/** 话题 reel 里的参与角色（头像圈）。 */
+export interface TopicParticipant {
+  id: string
+  name: string
+  emoji: string
+}
+
 export interface DailyTopic {
   id: string
   title: string
+  headline: string
   content: string
   topic_date: string
+  heat: number
+  tags: string[]
+  hue: number
+  pinned: boolean
+  participants: TopicParticipant[]
 }
 
 interface Envelope<T> {

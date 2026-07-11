@@ -329,7 +329,7 @@ seq consecutive; clientMsgId replay returns same rows; reuse vs topic-create;
 greeting seq/read-cursor/membership; unread math (greeting excluded, N bubbles →
 N, read resets); cross-owner 404s; topic 404; prompt contains topic section.
 
-### ⬜ F4 — Topic reels API
+### ✅ F4 — Topic reels API
 
 *Depends on F1. (Independent of F3 — parallelizable.)*
 
