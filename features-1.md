@@ -389,6 +389,15 @@ service behavior already covered through the F3 REST seam.
 
 *Depends on F2, F4.*
 
+**Design files for this feature (open in a browser, copy markup/styles/SVGs
+from their source — sections named below):**
+
+- Mobile (< `lg`): **`dp/qiumi-app/FanMouth Mobile.html`** — components
+  `TabBar`, `TopTabs`, `Scene`, `PersonaSlide`, `Rail`, `Progress`, `TopicSlide`,
+  and the `@keyframes` block (`float`/`pop`/`rise`/`blink`/`glow`).
+- Desktop (`lg`+): **`dp/qiumi-app/FanMouth Desktop.html`** — components
+  `Sidebar` (+ `NAV_ICONS`), `Card`, `PersonaSlide`, `Rail`, `TopicSlide`.
+
 **Design tokens first** — cai's `client/src/index.css` currently has **no brand
 tokens and no `--font-sans`**. Add (values are canon, from the design project;
 "brand" is the amber-gold flame accent):
@@ -477,6 +486,16 @@ shape.
 ### ⬜ F8 — Client: chat overlay, inbox, profile — live over the socket
 
 *Depends on F5, F6, F7.*
+
+**Design files for this feature (open in a browser, copy markup/styles/SVGs
+from their source — sections named below):**
+
+- Mobile (< `lg`): **`dp/qiumi-app/FanMouth Mobile.html`** — components `Chat`
+  (header, bubbles, `Typing`, composer), `Inbox`, `Profile` (hero banner,
+  stats, favorites scroller, `menu` settings list).
+- Desktop (`lg`+): **`dp/qiumi-app/FanMouth Desktop.html`** — components `Chat`
+  (right-panel variant, max-640px centered column), `Inbox` (centered column),
+  `Profile` (incl. the **Edit-profile modal** — canonical for both layouts).
 
 **Chat** (rebuild `client/src/pages/Chat.tsx` per both designs' `Chat`):
 full-screen overlay on mobile; on desktop it fills the content area beside the
