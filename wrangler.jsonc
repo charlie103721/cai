@@ -26,5 +26,9 @@
       "database_id": "798518e0-d059-4c4e-86df-34deb4de111b",
       "migrations_dir": "server/db/migrations"
     }
-  ]
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "CONNECTION_HUB", "class_name": "ConnectionHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ConnectionHub"] }]
 }
