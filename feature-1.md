@@ -331,6 +331,29 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 | GET/PATCH | /api/me/profile | user | **new** |
 | GET | /api/me/stats | guest ok | **new** |
 
+## 5.1 Runtime & deployment (confirmed decisions)
+
+- **Runtime: Cloudflare Workers** (`wrangler.jsonc`, smart placement, hourly cron
+  trigger already configured). Client assets served from `./dist` with
+  `run_worker_first: ["/api/*"]`. Deploy = `bun run deploy`
+  (build → `wrangler d1 migrations apply cai-db --remote` → `wrangler deploy`).
+- **Database: Cloudflare D1** (SQLite). This is why the new topic `tags` /
+  `character_ids` columns are JSON-in-`text` and why timestamps use SQLite
+  expressions (`unixepoch()`), not JS `Date` — see §6.
+- **Chat engine: OpenRouter** (`server/lib/llm.ts`, plain `fetch`, zero SDK deps —
+  Workers-compatible by construction). Config: `OPENROUTER_API_KEY` secret
+  (+ optional `OPENROUTER_MODEL`, default `anthropic/claude-haiku-4.5`), already in
+  `.env.example`; prod secrets pushed with `bun run secrets:push` from `.env.prod`.
+- **Streaming: SSE over HTTP** (`streamSSE`), not WebSockets — one-directional
+  reply streaming needs no Durable Objects. Unread badges are pull-based
+  (query refetch), consistent with this.
+- **Rate limiting is per-isolate** (in-memory `Map`, documented in
+  `server/lib/rateLimit.ts`). Accepted for P0: limits are approximate across
+  isolates/regions. The new like/favorite endpoints inherit the same caveat —
+  their unique DB indexes are the real integrity backstop; the limiter is only
+  cost control. If limits must become strict later: Durable Objects or the CF
+  Rate Limiting binding, out of scope here.
+
 ## 6. Cross-cutting rules
 
 - Every new owner-scoped query uses the existing `Owner = {userId} | {guestId}`
@@ -356,7 +379,172 @@ no `window.confirm/alert/prompt`, `useLocalStorage` from usehooks-ts.
 Each server phase lands with vitest coverage for the new repos/routes
 (`bun run test:server`); client phases verified against `bun run local`.
 
-## 8. Open questions (non-blocking, defaults chosen)
+## 8. Backend technical design
+
+How the server work in §2 is actually built, in this repo's patterns
+(feature folders, repo/service/router layering, D1/SQLite).
+
+### 8.1 Schema details & the NULL-unique gotcha
+
+`character_likes` and `character_favorites` (identical shape):
+
+```ts
+export const character_likes = sqliteTable('character_likes', {
+  id: text('id').primaryKey(),
+  user_id: text('user_id').references(() => user.id, { onDelete: 'restrict' }),
+  guest_id: text('guest_id'),
+  character_id: text('character_id').notNull(),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => [
+  // SQLite treats NULLs as distinct in unique indexes, so a plain
+  // unique(user_id, character_id) would NOT dedupe guest rows (user_id NULL).
+  // Two partial unique indexes instead:
+  uniqueIndex('likes_user_char_uq').on(t.user_id, t.character_id)
+    .where(sql`user_id IS NOT NULL`),
+  uniqueIndex('likes_guest_char_uq').on(t.guest_id, t.character_id)
+    .where(sql`guest_id IS NOT NULL`),
+  index('likes_character_id_idx').on(t.character_id),
+])
+```
+
+Column additions (SQLite `ALTER TABLE ADD COLUMN` — every new column is either
+nullable or has a literal default, which is all D1 allows):
+
+- `conversations`: `topic_id text`, `last_read_at integer` (timestamp, NULL)
+- `daily_topics`: `headline text NOT NULL DEFAULT ''`, `heat integer NOT NULL
+  DEFAULT 0`, `tags text NOT NULL DEFAULT '[]'`, `character_ids text NOT NULL
+  DEFAULT '[]'`, `hue integer NOT NULL DEFAULT 28`, `pinned integer NOT NULL
+  DEFAULT 0`
+- `user`: `handle text` + unique index, `favorite_team text`
+- New composite index `chat_messages(conversation_id, created_at)` — replaces the
+  single-column index as the driver for both inbox subqueries (§8.4).
+
+Timestamps: Drizzle `{ mode: 'timestamp' }` stores epoch **seconds**; inserts via
+`$defaultFn(() => new Date())` are fine (epoch is timezone-independent — the
+AGENT.md PG caveat doesn't bite here), but SQL-side updates use
+`sql\`(unixepoch())\`` for consistency (e.g. `last_read_at`, `touchConversation`).
+
+### 8.2 Character counters without N+1
+
+Characters live in code, so `GET /api/characters` assembles counts from **one
+`db.batch()`** (D1 batches run as a single implicit transaction / round trip):
+
+1. `SELECT character_id, COUNT(*) n FROM character_likes GROUP BY character_id`
+2. `SELECT character_id, COUNT(*) n FROM conversations GROUP BY character_id`
+3. owner's liked ids (`WHERE user_id = ? / guest_id = ?`)
+4. owner's favorited ids
+
+Merge into the static roster in `server/features/characters/repo.ts` (new file —
+holds only counter queries; persona data stays in `data.ts`). `like_count =
+seed_likes + n₁`, `chat_count = seed_chats + n₂`. No caching for P0; four indexed
+group-bys over small tables is nothing.
+
+### 8.3 Race-safe like toggle (no read-then-write)
+
+```ts
+// repo: returns the new state without a prior SELECT
+const inserted = await db.insert(character_likes)
+  .values({ id: crypto.randomUUID(), ...ownerCols(owner), character_id })
+  .onConflictDoNothing()
+  .returning({ id: character_likes.id })
+if (inserted.length > 0) return { liked: true }
+await db.delete(character_likes).where(and(ownerFilter(owner), eq(character_id)))
+return { liked: false }
+```
+
+Two concurrent toggles can't double-insert (partial unique index) and the worst
+race outcome is an extra no-op delete. Favorites skip toggling entirely:
+`POST` = insert-on-conflict-do-nothing, `DELETE` = delete — both idempotent,
+so client retries are always safe. Favorites repo exports `ownerFilter`-style
+helpers reused from a shared `server/features/shared/owner.ts` (extract the
+existing one from `chat/repo.ts` rather than duplicating it).
+
+### 8.4 Inbox: last message + unread_count in one query
+
+Correlated scalar subqueries (SQLite is good at these with the composite index),
+built with Drizzle `sql` fragments inside the existing `findConversations`:
+
+```sql
+SELECT c.*,
+  (SELECT content FROM chat_messages m
+    WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_content,
+  (SELECT role FROM chat_messages m
+    WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_role,
+  (SELECT COUNT(*) FROM chat_messages m
+    WHERE m.conversation_id = c.id AND m.role = 'assistant'
+      AND m.created_at > COALESCE(c.last_read_at, 0)) AS unread_count
+FROM conversations c
+WHERE <ownerFilter> ORDER BY c.updated_at DESC
+```
+
+`insertConversation` sets `last_read_at = now` so the scripted greeting is never
+unread. `POST /:id/read` is a one-line owner-scoped
+`UPDATE conversations SET last_read_at = (unixepoch())`.
+
+### 8.5 Topics: JSON columns at the boundary
+
+- Repo returns raw rows; the **router** owns (de)serialization: parse with
+  `z.string().transform(s => JSON.parse(s)).pipe(z.array(z.string())).catch([])`
+  so a hand-edited bad row degrades to `[]` instead of a 500.
+- Admin create: Zod validates `tags` (≤8, each ≤24 chars), `character_ids`
+  against the roster (`getCharacter` each id → 400 `UNKNOWN_CHARACTER` on miss),
+  `hue` 0–360, `heat ≥ 0`; router stringifies before insert.
+- `GET /topics/today` expands `character_ids` → `{id, name, emoji}` via the
+  roster (in-memory, no query) and sorts `pinned DESC, created_at DESC` in SQL.
+
+### 8.6 Topic-seeded chat plumbing
+
+- New repo fn `findTopicById(db, id)` (active only).
+- `createConversationWithGreeting` gains an optional `topic` param → stored on the
+  row. `streamReply` already receives the conversation via the router; the router
+  passes `conversation.topic_id` through, and `buildSystemPrompt(db, character,
+  seededTopic?)` appends: `【本次对话来源】用户是从话题「{title}」进入的：{content}——
+  开场和前几轮优先围绕这个话题展开。` Daily-topic injection stays as-is (the seeded
+  topic may also appear there; the dedicated section just gives it priority).
+
+### 8.7 Guest→account merge: lazy middleware, not an auth hook
+
+better-auth hooks don't reliably see our `guest_id` cookie across every login
+path (email, OAuth callback, refresh). Instead: a small `mergeGuestData`
+middleware mounted after `jwtAuth` on `/api/*` —
+
+```
+if (c.get('user') && guestCookie) {
+  await mergeGuest(db, guestCookie, user.userId)   // idempotent
+  clearGuestCookie(c)
+}
+```
+
+`mergeGuest` runs one `db.batch()`:
+1. delete guest likes/favorites that collide with existing user rows
+   (`WHERE guest_id = ? AND character_id IN (SELECT character_id FROM … WHERE user_id = ?)`)
+2. `UPDATE character_likes/character_favorites/conversations
+   SET user_id = ?, guest_id = NULL WHERE guest_id = ?`
+
+Idempotent by construction (second run matches zero rows), covers sign-up,
+sign-in, *and* returning users on a new device, and costs one batch only on the
+first authenticated request that still carries a guest cookie.
+
+### 8.8 Profile & stats
+
+- `server/features/users/router.ts` (new): `GET /me/profile` reads the user row;
+  `PATCH /me/profile` lowercases `handle`, validates `^[a-z0-9_]{3,20}$`, and
+  relies on the unique index — catch the constraint violation → 409
+  `HANDLE_TAKEN` (no check-then-insert race).
+- `GET /me/stats`: one `db.batch()` of three owner-scoped `COUNT(*)`s
+  (conversations, favorites, likes). Works for guests via the same `Owner` filter.
+
+### 8.9 Tests (vitest, existing `server` project, better-sqlite3)
+
+- Repo level: partial-unique enforcement (double like by same guest = 1 row),
+  toggle semantics, unread_count math (greeting excluded; count resets on read),
+  merge idempotency + collision handling.
+- Router level: Zod rejections, 404s (unknown character/topic), 409 handle
+  conflict, owner isolation (guest A can't read guest B's conversations —
+  extends the existing pattern).
+
+## 9. Open questions (non-blocking, defaults chosen)
 
 1. **Seeded counters** — launch with display bases (`seed_likes`/`seed_chats`) so the
    feed looks alive, or honest zeros? *Default in this doc: seeded bases.*
