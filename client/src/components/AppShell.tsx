@@ -99,7 +99,7 @@ function TopTabs({ active }: { active: 'feed' | 'topics' }) {
     </Link>
   )
   return (
-    <div className="lg:hidden" style={{ position: 'absolute', top: 6, left: 0, right: 0, zIndex: 20, display: 'flex', justifyContent: 'center', gap: 22 }}>
+    <div className="flex lg:hidden" style={{ position: 'absolute', top: 6, left: 0, right: 0, zIndex: 20, justifyContent: 'center', gap: 22 }}>
       {tab('feed', '/', 'For You')}
       {tab('topics', '/topics', 'Topics')}
     </div>
@@ -134,8 +134,8 @@ function UnreadBadge({ count, style }: { count: number; style?: React.CSSPropert
 function MobileTabBar({ activeKey, unread }: { activeKey: string | null; unread: number }) {
   return (
     <nav
-      className="lg:hidden"
-      style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-around', borderTop: '1px solid rgba(255,255,255,.08)', background: '#0c0c0d', zIndex: 35 }}
+      className="flex lg:hidden"
+      style={{ height: 56, flex: 'none', alignItems: 'center', justifyContent: 'space-around', borderTop: '1px solid rgba(255,255,255,.08)', background: '#0c0c0d', zIndex: 35 }}
     >
       {NAV.map((item) => {
         const on = activeKey === item.key
